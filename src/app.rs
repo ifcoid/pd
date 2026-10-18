@@ -44,6 +44,7 @@ pub struct App {
     pub viewer_total_pages: usize,
     pub viewer_scale: f32,
     pub viewer_image_handle: Option<image::Handle>,
+    pub sidebar_open: bool,
 
     // PDF to Images Tab State
     pub pdf_to_img_file: Option<PathBuf>,
@@ -77,12 +78,14 @@ pub enum Message {
     SwitchTab(ActiveTab),
     ToggleMenu,
     CloseMenu,
+    ToggleSidebar,
 
     // Viewer Actions
     PickViewerFile,
     ViewerFileSelected(Option<PathBuf>),
     ViewerNextPage,
     ViewerPrevPage,
+    ViewerGoToPage(usize),
     ViewerZoomIn,
     ViewerZoomOut,
     ViewerZoomReset,
@@ -170,6 +173,7 @@ impl App {
             compress_file: None,
             compress_report: None,
             menu_open: false,
+            sidebar_open: false,
         }
     }
 
@@ -313,6 +317,10 @@ impl App {
                 self.menu_open = false;
                 Task::none()
             }
+            Message::ToggleSidebar => {
+                self.sidebar_open = !self.sidebar_open;
+                Task::none()
+            }
             Message::SwitchTab(tab) => {
                 self.active_tab = tab;
                 self.menu_open = false;
@@ -354,6 +362,17 @@ impl App {
             Message::ViewerPrevPage => {
                 if self.viewer_current_page > 1 {
                     self.viewer_current_page -= 1;
+                    return self.render_current_viewer_page();
+                }
+                Task::none()
+            }
+            Message::ViewerGoToPage(page) => {
+                if self.viewer_file.is_some()
+                    && page >= 1
+                    && page <= self.viewer_total_pages
+                    && page != self.viewer_current_page
+                {
+                    self.viewer_current_page = page;
                     return self.render_current_viewer_page();
                 }
                 Task::none()
@@ -1026,30 +1045,37 @@ impl App {
             ActiveTab::Compress => self.view_compress_tab(),
         };
 
-        let body: Element<'_, Message> = if self.menu_open {
-            row![
-                container(content)
-                    .width(Length::Fill)
+        let mut body_row = row![];
+
+        // Left sidebar (Edge-style table of contents / page thumbnails)
+        if self.active_tab == ActiveTab::View && self.sidebar_open && self.viewer_file.is_some() {
+            body_row = body_row.push(
+                container(self.view_sidebar())
+                    .width(220)
                     .height(Length::Fill)
-                    .padding(if self.active_tab == ActiveTab::View { 0 } else { 16 }),
-                container(self.view_menu_dropdown())
-                    .padding(Padding::from([8, 12]))
-            ]
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .into()
-        } else {
+            );
+        }
+
+        // Center PDF Viewer or active tool
+        body_row = body_row.push(
             container(content)
                 .width(Length::Fill)
                 .height(Length::Fill)
                 .padding(if self.active_tab == ActiveTab::View { 0 } else { 16 })
-                .into()
-        };
+        );
+
+        // Right tools drawer
+        if self.menu_open {
+            body_row = body_row.push(
+                container(self.view_menu_dropdown())
+                    .padding(Padding::from([8, 12]))
+            );
+        }
 
         let main_layout = column![
             top_bar,
             status_bar,
-            body
+            body_row.width(Length::Fill).height(Length::Fill)
         ]
         .spacing(0)
         .width(Length::Fill)
@@ -1062,77 +1088,146 @@ impl App {
             .into()
     }
 
+    fn view_sidebar(&self) -> Element<'_, Message> {
+        let header = row![
+            text("Daftar Halaman").size(13).font(BOLD),
+            Space::new().width(Length::Fill),
+            button(text("✕").size(12))
+                .style(button::text)
+                .padding(Padding::from([2, 6]))
+                .on_press(Message::ToggleSidebar)
+        ]
+        .align_y(Alignment::Center)
+        .padding(Padding::from([8, 12]));
+
+        let mut page_list = column![].spacing(3).padding(Padding::from([4, 8]));
+
+        for p in 1..=self.viewer_total_pages {
+            let is_current = p == self.viewer_current_page;
+            let page_btn = button(
+                row![
+                    container(text(format!("{}", p)).size(11).font(BOLD))
+                        .padding(Padding::from([2, 6]))
+                        .style(container::rounded_box),
+                    text(format!("Halaman {}", p))
+                        .size(12)
+                        .font(if is_current { BOLD } else { Font::DEFAULT }),
+                    Space::new().width(Length::Fill),
+                    if is_current {
+                        text("●").size(8).style(text::primary)
+                    } else {
+                        text("")
+                    }
+                ]
+                .spacing(8)
+                .align_y(Alignment::Center)
+            )
+            .width(Length::Fill)
+            .style(if is_current { button::primary } else { button::secondary })
+            .padding(Padding::from([6, 8]))
+            .on_press(Message::ViewerGoToPage(p));
+
+            page_list = page_list.push(page_btn);
+        }
+
+        let sidebar_content = column![
+            header,
+            rule::horizontal(1),
+            scrollable(page_list).height(Length::Fill)
+        ]
+        .spacing(4)
+        .width(Length::Fill)
+        .height(Length::Fill);
+
+        container(sidebar_content)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .style(container::rounded_box)
+            .into()
+    }
+
     fn view_top_bar(&self) -> Element<'_, Message> {
         let is_processing = matches!(self.status, OperationStatus::Processing(_));
 
         let logo_badge = container(
-            text("PD").size(12).font(BOLD).style(text::primary)
+            text("PD").size(11).font(BOLD).style(text::primary)
         )
-        .padding(Padding::from([4, 8]))
+        .padding(Padding::from([3, 7]))
         .style(container::rounded_box);
 
-        let burger_btn = button(
+        let menu_btn = button(
             row![
-                text(if self.menu_open { "✕" } else { "☰" }).size(14).font(BOLD),
-                text("Alat").size(12)
+                text(if self.menu_open { "✕" } else { "⋯" }).size(14).font(BOLD),
+                text("Alat").size(11)
             ]
-            .spacing(6)
+            .spacing(4)
             .align_y(Alignment::Center)
         )
         .style(if self.menu_open { button::primary } else { button::secondary })
         .on_press(Message::ToggleMenu)
-        .padding(Padding::from([6, 12]));
+        .padding(Padding::from([4, 10]));
 
         if self.active_tab == ActiveTab::View {
+            let sidebar_btn = button(
+                text("▤").size(14).font(BOLD)
+            )
+            .style(if self.sidebar_open { button::primary } else { button::secondary })
+            .padding(Padding::from([4, 8]));
+            let sidebar_btn = if self.viewer_file.is_some() && !is_processing {
+                sidebar_btn.on_press(Message::ToggleSidebar)
+            } else {
+                sidebar_btn
+            };
+
             let open_btn = button(
-                row![text("📂"), text("Buka").size(12)]
-                    .spacing(5)
+                row![text("📂").size(13), text("Buka").size(11)]
+                    .spacing(4)
                     .align_y(Alignment::Center)
             )
             .style(button::secondary)
-            .padding(Padding::from([6, 10]));
+            .padding(Padding::from([4, 8]));
             let open_btn = if is_processing { open_btn } else { open_btn.on_press(Message::PickViewerFile) };
 
             let file_name = self.viewer_file.as_ref()
                 .and_then(|p| p.file_name())
                 .map(|n| n.to_string_lossy().to_string())
-                .unwrap_or_else(|| "Belum ada dokumen terbuka".to_string());
+                .unwrap_or_else(|| "Belum ada dokumen".to_string());
 
-            let display_name = if file_name.len() > 26 {
-                format!("{}...", &file_name[..24])
+            let display_name = if file_name.len() > 24 {
+                format!("{}...", &file_name[..22])
             } else {
                 file_name
             };
 
-            let page_text = if self.viewer_total_pages > 0 {
-                format!("{} / {}", self.viewer_current_page, self.viewer_total_pages)
-            } else {
-                "- / -".to_string()
-            };
-
-            let prev_btn = button(text("◀").size(11))
+            let prev_btn = button(text("◀").size(10))
                 .style(button::secondary)
-                .padding(Padding::from([5, 9]));
+                .padding(Padding::from([4, 8]));
             let prev_btn = if self.viewer_file.is_some() && self.viewer_current_page > 1 && !is_processing {
                 prev_btn.on_press(Message::ViewerPrevPage)
             } else {
                 prev_btn
             };
 
-            let next_btn = button(text("▶").size(11))
+            let page_text = if self.viewer_total_pages > 0 {
+                format!("{} of {}", self.viewer_current_page, self.viewer_total_pages)
+            } else {
+                "- of -".to_string()
+            };
+
+            let page_pill = container(text(page_text).size(11).font(BOLD))
+                .padding(Padding::from([4, 10]))
+                .style(container::rounded_box);
+
+            let next_btn = button(text("▶").size(10))
                 .style(button::secondary)
-                .padding(Padding::from([5, 9]));
+                .padding(Padding::from([4, 8]));
             let next_btn = if self.viewer_file.is_some() && self.viewer_current_page < self.viewer_total_pages && !is_processing {
                 next_btn.on_press(Message::ViewerNextPage)
             } else {
                 next_btn
             };
 
-            let page_pill = container(text(page_text).size(12).font(BOLD))
-                .padding(Padding::from([4, 10]))
-                .style(container::rounded_box);
-
-            let zoom_out = button(text("−").size(13).font(BOLD))
+            let zoom_out = button(text("−").size(12).font(BOLD))
                 .style(button::secondary)
                 .padding(Padding::from([4, 8]));
             let zoom_out = if self.viewer_file.is_some() && !is_processing { zoom_out.on_press(Message::ViewerZoomOut) } else { zoom_out };
@@ -1142,68 +1237,52 @@ impl App {
                 .padding(Padding::from([4, 8]));
             let zoom_lbl = if self.viewer_file.is_some() && !is_processing { zoom_lbl.on_press(Message::ViewerZoomReset) } else { zoom_lbl };
 
-            let zoom_in = button(text("+").size(13).font(BOLD))
+            let zoom_in = button(text("+").size(12).font(BOLD))
                 .style(button::secondary)
                 .padding(Padding::from([4, 8]));
             let zoom_in = if self.viewer_file.is_some() && !is_processing { zoom_in.on_press(Message::ViewerZoomIn) } else { zoom_in };
 
-            let png_btn = button(
-                row![text("💾"), text("PNG").size(11).font(BOLD)]
-                    .spacing(4)
-                    .align_y(Alignment::Center)
-            )
-            .style(button::secondary)
-            .padding(Padding::from([5, 8]));
+            let png_btn = button(text("PNG").size(11).font(BOLD))
+                .style(button::secondary)
+                .padding(Padding::from([4, 8]));
             let png_btn = if self.viewer_file.is_some() && !is_processing { png_btn.on_press(Message::ViewerExportPagePng) } else { png_btn };
 
-            let jpg_btn = button(
-                row![text("💾"), text("JPG").size(11).font(BOLD)]
-                    .spacing(4)
-                    .align_y(Alignment::Center)
-            )
-            .style(button::secondary)
-            .padding(Padding::from([5, 8]));
+            let jpg_btn = button(text("JPG").size(11).font(BOLD))
+                .style(button::secondary)
+                .padding(Padding::from([4, 8]));
             let jpg_btn = if self.viewer_file.is_some() && !is_processing { jpg_btn.on_press(Message::ViewerExportPageJpg) } else { jpg_btn };
-
-            let all_btn = button(
-                row![text("📁"), text("Semua").size(11).font(BOLD)]
-                    .spacing(4)
-                    .align_y(Alignment::Center)
-            )
-            .style(button::secondary)
-            .padding(Padding::from([5, 8]));
-            let all_btn = if self.viewer_file.is_some() && !is_processing { all_btn.on_press(Message::ViewerExportAll) } else { all_btn };
 
             let top_row = row![
                 logo_badge,
+                sidebar_btn,
                 open_btn,
-                text(display_name).size(13).font(BOLD),
+                text(display_name).size(12).font(BOLD).style(text::secondary),
                 Space::new().width(Length::Fill),
-                row![prev_btn, page_pill, next_btn].spacing(4).align_y(Alignment::Center),
-                Space::new().width(10),
                 row![zoom_out, zoom_lbl, zoom_in].spacing(2).align_y(Alignment::Center),
-                Space::new().width(10),
-                row![png_btn, jpg_btn, all_btn].spacing(4).align_y(Alignment::Center),
-                Space::new().width(10),
-                burger_btn
+                text("│").size(12).style(text::secondary),
+                row![prev_btn, page_pill, next_btn].spacing(3).align_y(Alignment::Center),
+                Space::new().width(Length::Fill),
+                row![png_btn, jpg_btn].spacing(4).align_y(Alignment::Center),
+                Space::new().width(4),
+                menu_btn
             ]
-            .spacing(8)
+            .spacing(6)
             .align_y(Alignment::Center);
 
             container(top_row)
                 .width(Length::Fill)
-                .padding(Padding::from([6, 12]))
+                .padding(Padding::from([4, 10]))
                 .style(container::rounded_box)
                 .into()
         } else {
             let back_btn = button(
-                row![text("←"), text("Kembali ke Dokumen").size(12)]
+                row![text("←"), text("Kembali ke Dokumen").size(11)]
                     .spacing(5)
                     .align_y(Alignment::Center)
             )
             .style(button::secondary)
             .on_press(Message::SwitchTab(ActiveTab::View))
-            .padding(Padding::from([6, 12]));
+            .padding(Padding::from([4, 10]));
 
             let tab_title = match self.active_tab {
                 ActiveTab::View => "Viewer Dokumen",
@@ -1217,16 +1296,16 @@ impl App {
             let top_row = row![
                 logo_badge,
                 back_btn,
-                text(tab_title).size(14).font(BOLD),
+                text(tab_title).size(13).font(BOLD),
                 Space::new().width(Length::Fill),
-                burger_btn
+                menu_btn
             ]
-            .spacing(12)
+            .spacing(10)
             .align_y(Alignment::Center);
 
             container(top_row)
                 .width(Length::Fill)
-                .padding(Padding::from([6, 12]))
+                .padding(Padding::from([4, 10]))
                 .style(container::rounded_box)
                 .into()
         }
@@ -1249,7 +1328,7 @@ impl App {
             .on_press(Message::SwitchTab(tab))
         };
 
-        let menu_content = column![
+        let mut menu_content = column![
             row![
                 text("ALAT & UTILITAS").size(11).font(BOLD).style(text::secondary),
                 Space::new().width(Length::Fill),
@@ -1268,6 +1347,23 @@ impl App {
         ]
         .spacing(8)
         .width(260);
+
+        if self.viewer_file.is_some() {
+            menu_content = menu_content.push(rule::horizontal(1)).push(
+                button(
+                    row![
+                        text("📁").size(13),
+                        text("Ekspor Semua Halaman").size(12).font(BOLD)
+                    ]
+                    .spacing(6)
+                    .align_y(Alignment::Center)
+                )
+                .style(button::secondary)
+                .width(Length::Fill)
+                .padding(Padding::from([8, 12]))
+                .on_press(Message::ViewerExportAll)
+            );
+        }
 
         container(menu_content)
             .padding(Padding::from([12, 14]))
