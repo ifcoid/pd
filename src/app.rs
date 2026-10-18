@@ -13,6 +13,7 @@ use crate::pdf_ops::{
     CompressionReport, ExportImageFormat, PageViewData,
 };
 
+
 const BOLD: Font = Font {
     weight: iced::font::Weight::Bold,
     ..Font::DEFAULT
@@ -47,6 +48,8 @@ pub struct App {
     pub viewer_scale: f32,
     pub viewer_image_handle: Option<image::Handle>,
     pub viewer_current_data: Option<PageViewData>,
+    pub viewer_scroll_relative_y: f32,
+    pub viewer_content_taller: bool,
     pub viewer_last_scroll_nav: Option<Instant>,
     pub sidebar_open: bool,
     pub context_menu_open: bool,
@@ -103,6 +106,10 @@ pub enum Message {
     ViewerCopyPageToClipboard,
     ViewerExportPagePdf,
     ViewerExportPdfCompleted(Result<PathBuf, String>),
+    ViewerScrolled {
+        relative_y: f32,
+        content_taller: bool,
+    },
     CloseContextMenu,
     EventOccurred(Event),
 
@@ -169,6 +176,8 @@ impl App {
             viewer_total_pages: 0,
             viewer_scale: 1.25,
             viewer_image_handle: None,
+            viewer_scroll_relative_y: 0.0,
+            viewer_content_taller: false,
             viewer_last_scroll_nav: None,
             pdf_to_img_file: None,
             pdf_to_img_total_pages: 0,
@@ -332,6 +341,11 @@ impl App {
 
     pub fn update(&mut self, message: Message) -> Task<Message> {
         match message {
+            Message::ViewerScrolled { relative_y, content_taller } => {
+                self.viewer_scroll_relative_y = relative_y;
+                self.viewer_content_taller = content_taller;
+                Task::none()
+            }
             Message::EventOccurred(event) => {
                 if self.active_tab != ActiveTab::View || self.viewer_file.is_none() {
                     return Task::none();
@@ -354,23 +368,40 @@ impl App {
 
                         let now = Instant::now();
                         let can_nav = self.viewer_last_scroll_nav
-                            .map(|t| now.duration_since(t).as_millis() > 250)
+                            .map(|t| now.duration_since(t).as_millis() > 300)
                             .unwrap_or(true);
 
                         if can_nav {
                             if y < -0.1 {
-                                // Scrolling down -> next page!
-                                if self.viewer_current_page < self.viewer_total_pages {
-                                    self.viewer_last_scroll_nav = Some(now);
-                                    self.viewer_current_page += 1;
-                                    return self.render_current_viewer_page();
+                                // Scrolling down
+                                // If page fits in viewport OR already scrolled to the bottom (>= 0.92)
+                                if !self.viewer_content_taller || self.viewer_scroll_relative_y >= 0.92 {
+                                    if self.viewer_current_page < self.viewer_total_pages {
+                                        self.viewer_last_scroll_nav = Some(now);
+                                        self.viewer_current_page += 1;
+                                        self.viewer_scroll_relative_y = 0.0;
+                                        return Task::batch(vec![
+                                            self.render_current_viewer_page(),
+                                            iced::widget::operation::snap_to(
+                                                "viewer_scroll",
+                                                iced::widget::operation::RelativeOffset::START,
+                                            ),
+                                        ]);
+                                    }
                                 }
                             } else if y > 0.1 {
-                                // Scrolling up -> previous page!
-                                if self.viewer_current_page > 1 {
-                                    self.viewer_last_scroll_nav = Some(now);
-                                    self.viewer_current_page -= 1;
-                                    return self.render_current_viewer_page();
+                                // Scrolling up
+                                // If page fits in viewport OR already scrolled to the top (<= 0.08)
+                                if !self.viewer_content_taller || self.viewer_scroll_relative_y <= 0.08 {
+                                    if self.viewer_current_page > 1 {
+                                        self.viewer_last_scroll_nav = Some(now);
+                                        self.viewer_current_page -= 1;
+                                        self.viewer_scroll_relative_y = 1.0;
+                                        return Task::batch(vec![
+                                            self.render_current_viewer_page(),
+                                            iced::widget::operation::snap_to_end("viewer_scroll"),
+                                        ]);
+                                    }
                                 }
                             }
                         }
@@ -1630,7 +1661,12 @@ impl App {
                 .padding(Padding::from(16));
 
             let main_scroll = scrollable(scroll_content)
-                .height(Length::Fill);
+                .id("viewer_scroll")
+                .height(Length::Fill)
+                .on_scroll(|vp| Message::ViewerScrolled {
+                    relative_y: vp.relative_offset().y,
+                    content_taller: vp.content_bounds().height > vp.bounds().height + 15.0,
+                });
 
             if self.context_menu_open {
                 let action_btn = |icon: &'static str, title: &'static str, desc: &'static str, msg: Message| {
