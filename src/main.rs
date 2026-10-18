@@ -71,6 +71,26 @@ fn main() -> iced::Result {
         std::process::exit(0);
     }
 
+    if args.len() > 1 && args[1] == "--compress" {
+        let pdf_paths: Vec<PathBuf> = args[2..]
+            .iter()
+            .map(PathBuf::from)
+            .filter(|p| p.exists() && p.is_file())
+            .collect();
+
+        for pdf_path in pdf_paths {
+            let parent_dir = pdf_path.parent().unwrap_or_else(|| Path::new("."));
+            let stem = pdf_path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("document");
+
+            let dest_path = parent_dir.join(format!("{}_compressed.pdf", stem));
+            let _ = pdf_ops::compress_pdf(&pdf_path, &dest_path);
+        }
+        std::process::exit(0);
+    }
+
     iced::application(App::boot, App::update, App::view)
         .title("pd")
         .theme(App::theme)

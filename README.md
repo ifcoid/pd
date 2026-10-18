@@ -48,8 +48,10 @@ PD menggabungkan reader PDF ultra-ringan dengan alat manipulasi dokumen esensial
    * Mendukung pengaturan urutan file (*reorder*).
 5. **Split PDF:**
    * Memecah file PDF berdasarkan rentang halaman (*page ranges*) tertentu menjadi dokumen terpisah.
-6. **Compress PDF:**
-   * Mengurangi ukuran file PDF dengan optimasi objek internal (*object streams*).
+6. **Compress PDF & Menu Klik Kanan Kompres (Explorer Context Menu):**
+   * **Klik Kanan Instan (ala WinRAR):** Klik kanan pada file PDF di Windows Explorer / Linux file manager, pilih **"Kompres PDF dengan PD"** untuk langsung menghasilkan file `<nama_file>_compressed.pdf` teroptimasi di folder yang sama tanpa perlu membuka jendela aplikasi.
+   * **Buka di GUI:** Atau pilih **"Buka di PD (Kompres PDF)..."** untuk meninjau detail ukuran asli, rasio penghematan byte, dan persentase kompresi.
+   * Mengurangi ukuran file PDF dengan kompresi stream Flate internal, pembersihan metadata yatim (*orphaned objects*), dan pengemasan objek stream modern (*PDF 1.5+ Object Streams*).
 
 ---
 

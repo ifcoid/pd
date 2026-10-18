@@ -280,6 +280,37 @@ try {
     Write-WarningMsg "Tidak dapat mendaftarkan menu klik kanan PDF: $($_.Exception.Message)"
 }
 
+# 10. Daftarkan Menu Klik Kanan untuk Kompres File PDF
+Write-Step "Mendaftarkan menu klik kanan Windows Explorer untuk Kompres PDF..."
+try {
+    $PdfShellPaths = @(
+        "HKCU:\Software\Classes\SystemFileAssociations\.pdf\shell",
+        "HKCU:\Software\Classes\pd.pdf\shell"
+    )
+
+    $MenuPdfCompress = "Kompres PDF dengan PD"
+    $MenuPdfGuiCompress = "Buka di PD (Kompres PDF)..."
+
+    $CmdPdfCompress = "`"$ExePath`" --compress `"%1`""
+    $CmdPdfGuiCompress = "`"$ExePath`" --gui-compress `"%1`""
+
+    foreach ($basePath in $PdfShellPaths) {
+        # Instant Compress
+        New-Item -Path "$basePath\PD.Compress" -Value $MenuPdfCompress -Force | Out-Null
+        Set-ItemProperty -Path "$basePath\PD.Compress" -Name "Icon" -Value "$ExePath,0" -Force
+        New-Item -Path "$basePath\PD.Compress\command" -Value $CmdPdfCompress -Force | Out-Null
+
+        # Open in GUI Compress tab
+        New-Item -Path "$basePath\PD.OpenCompress" -Value $MenuPdfGuiCompress -Force | Out-Null
+        Set-ItemProperty -Path "$basePath\PD.OpenCompress" -Name "Icon" -Value "$ExePath,0" -Force
+        New-Item -Path "$basePath\PD.OpenCompress\command" -Value $CmdPdfGuiCompress -Force | Out-Null
+    }
+
+    Write-SuccessMsg "Menu klik kanan file PDF (Kompres PDF) berhasil didaftarkan!"
+} catch {
+    Write-WarningMsg "Tidak dapat mendaftarkan menu klik kanan Kompres PDF: $($_.Exception.Message)"
+}
+
 Write-Host ""
 if ($IsUpdate) {
     Write-SuccessMsg "Update selesai! PD berhasil diperbarui ke versi $TagName."

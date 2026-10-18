@@ -186,6 +186,23 @@ impl App {
                 }
             }
 
+            if args[0] == "--gui-compress" && args.len() > 1 {
+                let path = PathBuf::from(&args[1]);
+                if path.exists() && path.is_file() {
+                    let ext = path
+                        .extension()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("")
+                        .to_lowercase();
+                    if ext == "pdf" {
+                        app.compress_file = Some(path);
+                        app.active_tab = ActiveTab::Compress;
+                        app.status = OperationStatus::Idle;
+                        return (app, Task::none());
+                    }
+                }
+            }
+
             let first_path = PathBuf::from(&args[0]);
             let ext = first_path
                 .extension()

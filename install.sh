@@ -230,14 +230,31 @@ ${INSTALL_DIR}/pd --to-png "\$@"
 EOF
     chmod +x "$NAUTILUS_SCRIPTS/Konversi PDF ke Gambar (PD)"
 
-    # KDE Dolphin PDF to Image ServiceMenu
-    cat <<EOF > "$KDE_SERVICES/pd_pdf_to_image.desktop"
+    # Nautilus Compress PDF script
+    cat <<EOF > "$NAUTILUS_SCRIPTS/Kompres PDF (PD)"
+#!/usr/bin/env bash
+${INSTALL_DIR}/pd --compress "\$@"
+EOF
+    chmod +x "$NAUTILUS_SCRIPTS/Kompres PDF (PD)"
+
+    # KDE Dolphin PDF Actions ServiceMenu
+    cat <<EOF > "$KDE_SERVICES/pd_pdf_actions.desktop"
 [Desktop Entry]
 Type=Service
 ServiceTypes=KonqPopupMenu/Plugin
 MimeType=application/pdf;
-Actions=pdToPng;pdToJpg;pdOpenImages;
+Actions=pdCompress;pdOpenCompress;pdToPng;pdToJpg;pdOpenImages;
 X-KDE-Submenu=PD - PDF Utility
+
+[Desktop Action pdCompress]
+Name=Kompres PDF dengan PD
+Icon=application-pdf
+Exec=${INSTALL_DIR}/pd --compress %F
+
+[Desktop Action pdOpenCompress]
+Name=Buka di PD (Kompres PDF)...
+Icon=application-pdf
+Exec=${INSTALL_DIR}/pd --gui-compress %F
 
 [Desktop Action pdToPng]
 Name=Konversi PDF ke Gambar (PNG)
@@ -255,7 +272,7 @@ Icon=application-pdf
 Exec=${INSTALL_DIR}/pd --gui-pdf-to-images %F
 EOF
 
-    echo -e "${GREEN}[✓] File .pdf dan menu klik kanan (Gambar & PDF) berhasil didaftarkan di Linux!${NC}"
+    echo -e "${GREEN}[✓] File .pdf dan menu klik kanan (Gambar, PDF & Kompres) berhasil didaftarkan di Linux!${NC}"
 
 elif [ "$OS" = "Darwin" ]; then
     MAC_APP_DIR="$HOME/Applications/pd.app"
