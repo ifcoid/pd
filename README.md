@@ -33,8 +33,9 @@ PD menggabungkan reader PDF ultra-ringan dengan alat manipulasi dokumen esensial
    * Navigasi halaman cepat (*Next Page*, *Previous Page*, dan indikator posisi halaman).
    * Kontrol pembesaran dinamis (*Zoom In*, *Zoom Out*, dan *Reset 100%*).
    * **Ekspor Cepat:** Simpan halaman aktif ke file gambar `PNG` atau `JPG`, atau ekspor seluruh halaman langsung ke folder tujuan.
-2. **PDF to Images (Ekspor PDF ke Gambar):**
-   * Tab khusus untuk mengekstrak dan mengekspor halaman dokumen PDF menjadi file gambar berkualitas tinggi (`PNG` atau `JPG`).
+2. **PDF to Images & Menu Klik Kanan PDF (Ekspor ke Gambar):**
+   * **Klik Kanan Instan (ala WinRAR):** Klik kanan pada file PDF di Windows Explorer / Linux, pilih **"Konversi PDF ke Gambar (PNG)"** atau **"Konversi PDF ke Gambar (JPG)"** untuk langsung mengekstrak halaman menjadi gambar secara otomatis tanpa perlu membuka aplikasi.
+   * **Tab GUI Khusus:** Mengekstrak dan mengekspor halaman dokumen PDF menjadi file gambar berkualitas tinggi (`PNG` atau `JPG`).
    * Pilihan cakupan fleksibel: **Semua Halaman**, atau **Rentang Halaman Tertentu** (misal: `1, 3-5, 8`).
    * Pilihan resolusi / kualitas gambar: **150 DPI (1.5x)**, **200 DPI (HD 2.0x)**, atau **300 DPI (Ultra HD 3.0x)**.
    * Penyimpanan otomatis ke folder tujuan dengan penamaan rapi berurutan.

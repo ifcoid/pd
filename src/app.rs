@@ -172,6 +172,20 @@ impl App {
         let args: Vec<String> = std::env::args().skip(1).collect();
 
         if !args.is_empty() {
+            if args[0] == "--gui-pdf-to-images" && args.len() > 1 {
+                let path = PathBuf::from(&args[1]);
+                if path.exists() && path.is_file() {
+                    if let Ok(count) = get_pdf_page_count(&path) {
+                        app.pdf_to_img_file = Some(path);
+                        app.pdf_to_img_total_pages = count;
+                        app.pdf_to_img_range = format!("1-{}", count);
+                        app.active_tab = ActiveTab::PdfToImages;
+                        app.status = OperationStatus::Idle;
+                        return (app, Task::none());
+                    }
+                }
+            }
+
             let first_path = PathBuf::from(&args[0]);
             let ext = first_path
                 .extension()

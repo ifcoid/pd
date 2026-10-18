@@ -242,6 +242,44 @@ try {
     Write-WarningMsg "Tidak dapat mendaftarkan menu klik kanan: $($_.Exception.Message)"
 }
 
+# 9. Daftarkan Menu Klik Kanan untuk File PDF (Konversi PDF ke Gambar PNG/JPG)
+Write-Step "Mendaftarkan menu klik kanan Windows Explorer untuk file PDF (Ekspor ke Gambar)..."
+try {
+    $PdfShellPaths = @(
+        "HKCU:\Software\Classes\SystemFileAssociations\.pdf\shell",
+        "HKCU:\Software\Classes\pd.pdf\shell"
+    )
+
+    $MenuPdfPng = "Konversi PDF ke Gambar (PNG)"
+    $MenuPdfJpg = "Konversi PDF ke Gambar (JPG)"
+    $MenuPdfGui = "Buka di PD (PDF ke Gambar)..."
+
+    $CmdPdfPng = "`"$ExePath`" --to-png `"%1`""
+    $CmdPdfJpg = "`"$ExePath`" --to-jpg `"%1`""
+    $CmdPdfGui = "`"$ExePath`" --gui-pdf-to-images `"%1`""
+
+    foreach ($basePath in $PdfShellPaths) {
+        # PNG Convert
+        New-Item -Path "$basePath\PD.ToPng" -Value $MenuPdfPng -Force | Out-Null
+        Set-ItemProperty -Path "$basePath\PD.ToPng" -Name "Icon" -Value "$ExePath,0" -Force
+        New-Item -Path "$basePath\PD.ToPng\command" -Value $CmdPdfPng -Force | Out-Null
+
+        # JPG Convert
+        New-Item -Path "$basePath\PD.ToJpg" -Value $MenuPdfJpg -Force | Out-Null
+        Set-ItemProperty -Path "$basePath\PD.ToJpg" -Name "Icon" -Value "$ExePath,0" -Force
+        New-Item -Path "$basePath\PD.ToJpg\command" -Value $CmdPdfJpg -Force | Out-Null
+
+        # Open in GUI tab
+        New-Item -Path "$basePath\PD.OpenPdfToImages" -Value $MenuPdfGui -Force | Out-Null
+        Set-ItemProperty -Path "$basePath\PD.OpenPdfToImages" -Name "Icon" -Value "$ExePath,0" -Force
+        New-Item -Path "$basePath\PD.OpenPdfToImages\command" -Value $CmdPdfGui -Force | Out-Null
+    }
+
+    Write-SuccessMsg "Menu klik kanan file PDF (Konversi ke Gambar PNG/JPG) berhasil didaftarkan!"
+} catch {
+    Write-WarningMsg "Tidak dapat mendaftarkan menu klik kanan PDF: $($_.Exception.Message)"
+}
+
 Write-Host ""
 if ($IsUpdate) {
     Write-SuccessMsg "Update selesai! PD berhasil diperbarui ke versi $TagName."

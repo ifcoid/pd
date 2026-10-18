@@ -35,6 +35,42 @@ fn main() -> iced::Result {
         std::process::exit(0);
     }
 
+    if args.len() > 1 && (args[1] == "--to-image" || args[1] == "--to-png" || args[1] == "--to-jpg") {
+        let is_jpg = args[1] == "--to-jpg";
+        let format = if is_jpg {
+            pdf_ops::ExportImageFormat::Jpeg
+        } else {
+            pdf_ops::ExportImageFormat::Png
+        };
+        let ext = format.extension();
+
+        let pdf_paths: Vec<PathBuf> = args[2..]
+            .iter()
+            .map(PathBuf::from)
+            .filter(|p| p.exists() && p.is_file())
+            .collect();
+
+        for pdf_path in pdf_paths {
+            if let Ok(total_pages) = pdf_ops::get_pdf_page_count(&pdf_path) {
+                let parent_dir = pdf_path.parent().unwrap_or_else(|| Path::new("."));
+                let stem = pdf_path
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("document");
+
+                if total_pages <= 1 {
+                    let dest_path = parent_dir.join(format!("{}.{}", stem, ext));
+                    let _ = pdf_ops::export_pdf_page_to_image(&pdf_path, 1, &dest_path, format, 2.0);
+                } else {
+                    let out_dir = parent_dir.join(format!("{}_images", stem));
+                    let _ = std::fs::create_dir_all(&out_dir);
+                    let _ = pdf_ops::export_all_pdf_pages_to_images(&pdf_path, &out_dir, format, 2.0);
+                }
+            }
+        }
+        std::process::exit(0);
+    }
+
     iced::application(App::boot, App::update, App::view)
         .title("pd")
         .theme(App::theme)
