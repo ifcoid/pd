@@ -4,7 +4,10 @@ use iced::event::{self, Event};
 use iced::widget::{
     button, column, container, image, mouse_area, progress_bar, row, rule, scrollable, text, text_input, Space,
 };
-use iced::{keyboard, mouse, Alignment, Element, Font, Length, Padding, Subscription, Task, Theme};
+use iced::{
+    border::Border, keyboard, mouse, Alignment, Background, Color, Element, Font, Length, Padding,
+    Shadow, Subscription, Task, Theme, Vector,
+};
 
 use crate::pdf_ops::{
     compress_pdf, export_all_pdf_pages_to_images, export_pdf_page_to_image,
@@ -46,6 +49,8 @@ pub struct App {
     pub viewer_current_page: usize,
     pub viewer_total_pages: usize,
     pub viewer_scale: f32,
+    pub viewer_rotation: usize,
+    pub viewer_page_input: String,
     pub viewer_image_handle: Option<image::Handle>,
     pub viewer_current_data: Option<PageViewData>,
     pub viewer_pages: HashMap<usize, (image::Handle, PageViewData)>,
@@ -96,9 +101,14 @@ pub enum Message {
     ViewerNextPage,
     ViewerPrevPage,
     ViewerGoToPage(usize),
+    ViewerPageInputChanged(String),
+    ViewerPageInputSubmitted,
     ViewerZoomIn,
     ViewerZoomOut,
     ViewerZoomReset,
+    ViewerFitWidth,
+    ViewerRotateClockwise,
+    ViewerPrint,
     ViewerPageRendered(Result<PageViewData, String>),
     ViewerExportPagePng,
     ViewerExportPageJpg,
@@ -177,6 +187,8 @@ impl App {
             viewer_current_page: 1,
             viewer_total_pages: 0,
             viewer_scale: 1.25,
+            viewer_rotation: 0,
+            viewer_page_input: "1".to_string(),
             viewer_image_handle: None,
             viewer_pages: HashMap::new(),
             viewer_page_dims: (0, 0),
@@ -305,7 +317,7 @@ impl App {
     }
 
     pub fn theme(&self) -> Theme {
-        Theme::TokyoNight
+        Theme::Dark
     }
 
     pub fn subscription(&self) -> Subscription<Message> {
@@ -325,9 +337,18 @@ impl App {
         };
 
         let scale = self.viewer_scale;
+        let rotation = self.viewer_rotation;
         Task::future(async move {
             match render_page_to_rgba(&file, page, scale) {
-                Ok(data) => Message::ViewerPageRendered(Ok(data)),
+                Ok(mut data) => {
+                    if rotation != 0 {
+                        let (nw, nh, nbytes) = rotate_rgba_clockwise(data.width, data.height, &data.rgba_bytes, rotation);
+                        data.width = nw;
+                        data.height = nh;
+                        data.rgba_bytes = nbytes;
+                    }
+                    Message::ViewerPageRendered(Ok(data))
+                }
                 Err(e) => Message::ViewerPageRendered(Err(e.to_string())),
             }
         })
@@ -372,6 +393,7 @@ impl App {
                         .clamp(1, self.viewer_total_pages);
                     if approx_page != self.viewer_current_page {
                         self.viewer_current_page = approx_page;
+                        self.viewer_page_input = approx_page.to_string();
                         if let Some((handle, data)) = self.viewer_pages.get(&approx_page) {
                             self.viewer_image_handle = Some(handle.clone());
                             self.viewer_current_data = Some(data.clone());
@@ -468,6 +490,8 @@ impl App {
                         self.viewer_file = Some(file);
                         self.viewer_total_pages = total;
                         self.viewer_current_page = 1;
+                        self.viewer_page_input = "1".to_string();
+                        self.viewer_rotation = 0;
                         self.viewer_pages.clear();
                         self.viewer_loading_pages.clear();
                         self.viewer_page_dims = (0, 0);
@@ -479,6 +503,7 @@ impl App {
             Message::ViewerNextPage => {
                 if self.viewer_current_page < self.viewer_total_pages {
                     self.viewer_current_page += 1;
+                    self.viewer_page_input = self.viewer_current_page.to_string();
                     let target_ratio = (self.viewer_current_page - 1) as f32 / self.viewer_total_pages.max(1) as f32;
                     let snap_task = iced::widget::operation::snap_to(
                         "viewer_scroll",
@@ -492,6 +517,7 @@ impl App {
             Message::ViewerPrevPage => {
                 if self.viewer_current_page > 1 {
                     self.viewer_current_page -= 1;
+                    self.viewer_page_input = self.viewer_current_page.to_string();
                     let target_ratio = (self.viewer_current_page - 1) as f32 / self.viewer_total_pages.max(1) as f32;
                     let snap_task = iced::widget::operation::snap_to(
                         "viewer_scroll",
@@ -508,6 +534,7 @@ impl App {
                     && page <= self.viewer_total_pages
                 {
                     self.viewer_current_page = page;
+                    self.viewer_page_input = page.to_string();
                     let target_ratio = (page - 1) as f32 / self.viewer_total_pages.max(1) as f32;
                     let snap_task = iced::widget::operation::snap_to(
                         "viewer_scroll",
@@ -516,6 +543,18 @@ impl App {
                     let render_task = self.ensure_pages_rendered();
                     return Task::batch(vec![snap_task, render_task]);
                 }
+                Task::none()
+            }
+            Message::ViewerPageInputChanged(val) => {
+                self.viewer_page_input = val;
+                Task::none()
+            }
+            Message::ViewerPageInputSubmitted => {
+                if let Ok(p) = self.viewer_page_input.trim().parse::<usize>() {
+                    let clamped = p.clamp(1, self.viewer_total_pages.max(1));
+                    return self.update(Message::ViewerGoToPage(clamped));
+                }
+                self.viewer_page_input = self.viewer_current_page.to_string();
                 Task::none()
             }
             Message::ViewerZoomIn => {
@@ -544,6 +583,36 @@ impl App {
                 self.viewer_loading_pages.clear();
                 self.viewer_page_dims = (0, 0);
                 return self.ensure_pages_rendered();
+            }
+            Message::ViewerFitWidth => {
+                self.viewer_scale = match (self.viewer_scale * 100.0).round() as i32 {
+                    125 => 1.5,
+                    150 => 1.0,
+                    100 => 1.25,
+                    _ => 1.25,
+                };
+                self.viewer_pages.clear();
+                self.viewer_loading_pages.clear();
+                self.viewer_page_dims = (0, 0);
+                return self.ensure_pages_rendered();
+            }
+            Message::ViewerRotateClockwise => {
+                self.viewer_rotation = (self.viewer_rotation + 90) % 360;
+                self.viewer_pages.clear();
+                self.viewer_loading_pages.clear();
+                self.viewer_page_dims = (0, 0);
+                return self.ensure_pages_rendered();
+            }
+            Message::ViewerPrint => {
+                if let Some(ref path) = self.viewer_file {
+                    let p = path.clone();
+                    std::thread::spawn(move || {
+                        let _ = std::process::Command::new("powershell")
+                            .args(&["-NoProfile", "-Command", &format!("Start-Process -FilePath '{}' -Verb Print", p.display())])
+                            .spawn();
+                    });
+                }
+                Task::none()
             }
             Message::ViewerPageRendered(res) => {
                 match res {
@@ -1342,18 +1411,110 @@ impl App {
             .padding(0)
             .into()
     }
+}
 
+fn edge_bar_style(_theme: &Theme) -> container::Style {
+    container::Style {
+        background: Some(Background::Color(Color::from_rgb8(0x27, 0x27, 0x2b))),
+        border: Border {
+            color: Color::from_rgb8(0x1a, 0x1a, 0x1e),
+            width: 1.0,
+            radius: 0.0.into(),
+        },
+        ..Default::default()
+    }
+}
+
+fn edge_btn(_theme: &Theme, status: button::Status) -> button::Style {
+    match status {
+        button::Status::Hovered => button::Style {
+            background: Some(Background::Color(Color::from_rgb8(0x3a, 0x3a, 0x42))),
+            text_color: Color::WHITE,
+            border: Border {
+                color: Color::from_rgb8(0x4c, 0x4c, 0x56),
+                width: 1.0,
+                radius: 4.0.into(),
+            },
+            ..Default::default()
+        },
+        button::Status::Pressed => button::Style {
+            background: Some(Background::Color(Color::from_rgb8(0x44, 0x44, 0x4e))),
+            text_color: Color::WHITE,
+            border: Border {
+                color: Color::from_rgb8(0x00, 0x78, 0xd4),
+                width: 1.0,
+                radius: 4.0.into(),
+            },
+            ..Default::default()
+        },
+        button::Status::Disabled => button::Style {
+            background: None,
+            text_color: Color::from_rgb8(0x60, 0x60, 0x68),
+            ..Default::default()
+        },
+        button::Status::Active => button::Style {
+            background: None,
+            text_color: Color::from_rgb8(0xdd, 0xdd, 0xe2),
+            border: Border {
+                color: Color::TRANSPARENT,
+                width: 1.0,
+                radius: 4.0.into(),
+            },
+            ..Default::default()
+        },
+    }
+}
+
+fn edge_btn_active(_theme: &Theme, _status: button::Status) -> button::Style {
+    button::Style {
+        background: Some(Background::Color(Color::from_rgb8(0x00, 0x5a, 0x9e))),
+        text_color: Color::WHITE,
+        border: Border {
+            color: Color::from_rgb8(0x00, 0x78, 0xd4),
+            width: 1.0,
+            radius: 4.0.into(),
+        },
+        ..Default::default()
+    }
+}
+
+fn edge_btn_primary(_theme: &Theme, status: button::Status) -> button::Style {
+    match status {
+        button::Status::Hovered => button::Style {
+            background: Some(Background::Color(Color::from_rgb8(0x10, 0x6e, 0xbe))),
+            text_color: Color::WHITE,
+            border: Border {
+                color: Color::from_rgb8(0x28, 0x86, 0xde),
+                width: 1.0,
+                radius: 4.0.into(),
+            },
+            ..Default::default()
+        },
+        _ => button::Style {
+            background: Some(Background::Color(Color::from_rgb8(0x00, 0x78, 0xd4))),
+            text_color: Color::WHITE,
+            border: Border {
+                color: Color::from_rgb8(0x00, 0x78, 0xd4),
+                width: 1.0,
+                radius: 4.0.into(),
+            },
+            ..Default::default()
+        },
+    }
+}
+
+impl App {
     fn view_sidebar(&self) -> Element<'_, Message> {
         let header = row![
-            text("Daftar Halaman").size(13).font(BOLD),
+            text("Daftar Halaman").size(12).font(BOLD).style(text::secondary),
             Space::new().width(Length::Fill),
-            button(text("✕").size(12))
-                .style(button::text)
+            button(text("✕").size(11))
+                .style(edge_btn)
                 .padding(Padding::from([2, 6]))
                 .on_press(Message::ToggleSidebar)
         ]
         .align_y(Alignment::Center)
-        .padding(Padding::from([8, 12]));
+        .padding(Padding::from([10, 12]));
 
         let mut page_list = column![].spacing(3).padding(Padding::from([4, 8]));
 
@@ -1361,15 +1522,15 @@ impl App {
             let is_current = p == self.viewer_current_page;
             let page_btn = button(
                 row![
-                    container(text(format!("{}", p)).size(11).font(BOLD))
+                    container(text(format!("{}", p)).size(10).font(BOLD))
                         .padding(Padding::from([2, 6]))
-                        .style(container::rounded_box),
+                        .style(if is_current { container::rounded_box } else { |_t: &Theme| container::Style::default() }),
                     text(format!("Halaman {}", p))
-                        .size(12)
+                        .size(11)
                         .font(if is_current { BOLD } else { Font::DEFAULT }),
                     Space::new().width(Length::Fill),
                     if is_current {
-                        text("●").size(8).style(text::primary)
+                        text("●").size(7).style(text::primary)
                     } else {
                         text("")
                     }
@@ -1378,8 +1539,8 @@ impl App {
                 .align_y(Alignment::Center)
             )
             .width(Length::Fill)
-            .style(if is_current { button::primary } else { button::secondary })
-            .padding(Padding::from([6, 8]))
+            .style(if is_current { edge_btn_active } else { edge_btn })
+            .padding(Padding::from([5, 8]))
             .on_press(Message::ViewerGoToPage(p));
 
             page_list = page_list.push(page_btn);
@@ -1397,7 +1558,15 @@ impl App {
         container(sidebar_content)
             .width(Length::Fill)
             .height(Length::Fill)
-            .style(container::rounded_box)
+            .style(|_t: &Theme| container::Style {
+                background: Some(Background::Color(Color::from_rgb8(0x1e, 0x1f, 0x24))),
+                border: Border {
+                    color: Color::from_rgb8(0x2a, 0x2b, 0x32),
+                    width: 1.0,
+                    radius: 0.0.into(),
+                },
+                ..Default::default()
+            })
             .into()
     }
 
@@ -1408,7 +1577,15 @@ impl App {
             text("PD").size(11).font(BOLD).style(text::primary)
         )
         .padding(Padding::from([3, 7]))
-        .style(container::rounded_box);
+        .style(|_t: &Theme| container::Style {
+            background: Some(Background::Color(Color::from_rgb8(0x18, 0x18, 0x1c))),
+            border: Border {
+                color: Color::from_rgb8(0x38, 0x38, 0x42),
+                width: 1.0,
+                radius: 4.0.into(),
+            },
+            ..Default::default()
+        });
 
         let menu_btn = button(
             row![
@@ -1418,7 +1595,7 @@ impl App {
             .spacing(4)
             .align_y(Alignment::Center)
         )
-        .style(if self.menu_open { button::primary } else { button::secondary })
+        .style(if self.menu_open { edge_btn_active } else { edge_btn })
         .on_press(Message::ToggleMenu)
         .padding(Padding::from([4, 10]));
 
@@ -1426,7 +1603,7 @@ impl App {
             let sidebar_btn = button(
                 text("▤").size(14).font(BOLD)
             )
-            .style(if self.sidebar_open { button::primary } else { button::secondary })
+            .style(if self.sidebar_open { edge_btn_active } else { edge_btn })
             .padding(Padding::from([4, 8]));
             let sidebar_btn = if self.viewer_file.is_some() && !is_processing {
                 sidebar_btn.on_press(Message::ToggleSidebar)
@@ -1435,67 +1612,165 @@ impl App {
             };
 
             let open_btn = button(
-                row![text("📂").size(13), text("Buka").size(11)]
+                row![text("📂").size(13), text("Buka").size(11).font(BOLD)]
+                    .spacing(5)
+                    .align_y(Alignment::Center)
+            )
+            .style(edge_btn)
+            .padding(Padding::from([4, 8]));
+            let open_btn = if is_processing { open_btn } else { open_btn.on_press(Message::PickViewerFile) };
+
+            let copy_btn = button(
+                row![text("📋").size(12), text("Salin").size(11)]
                     .spacing(4)
                     .align_y(Alignment::Center)
             )
-            .style(button::secondary)
+            .style(edge_btn)
             .padding(Padding::from([4, 8]));
-            let open_btn = if is_processing { open_btn } else { open_btn.on_press(Message::PickViewerFile) };
+            let copy_btn = if self.viewer_file.is_some() && !is_processing {
+                copy_btn.on_press(Message::ViewerCopyPageToClipboard)
+            } else {
+                copy_btn
+            };
+
+            let save_btn = button(
+                row![text("💾").size(12), text("Simpan").size(11)]
+                    .spacing(4)
+                    .align_y(Alignment::Center)
+            )
+            .style(edge_btn)
+            .padding(Padding::from([4, 8]));
+            let save_btn = if self.viewer_file.is_some() && !is_processing {
+                save_btn.on_press(Message::ViewerExportPagePng)
+            } else {
+                save_btn
+            };
+
+            let export_all_btn = button(
+                row![text("📁").size(12), text("Ekspor").size(11)]
+                    .spacing(4)
+                    .align_y(Alignment::Center)
+            )
+            .style(edge_btn)
+            .padding(Padding::from([4, 8]));
+            let export_all_btn = if self.viewer_file.is_some() && !is_processing {
+                export_all_btn.on_press(Message::ViewerExportAll)
+            } else {
+                export_all_btn
+            };
 
             let file_name = self.viewer_file.as_ref()
                 .and_then(|p| p.file_name())
                 .map(|n| n.to_string_lossy().to_string())
                 .unwrap_or_else(|| "Belum ada dokumen".to_string());
 
-            let display_name = if file_name.len() > 24 {
-                format!("{}...", &file_name[..22])
+            let display_name = if file_name.len() > 20 {
+                format!("{}...", &file_name[..18])
             } else {
                 file_name
             };
 
-            let prev_btn = button(text("◀").size(10))
-                .style(button::secondary)
+            let sep = || text("│").size(12).style(|_t: &Theme| text::Style { color: Some(Color::from_rgb8(0x48, 0x48, 0x52)) });
+
+            let zoom_out = button(text("−").size(13).font(BOLD))
+                .style(edge_btn)
                 .padding(Padding::from([4, 8]));
+            let zoom_out = if self.viewer_file.is_some() && !is_processing { zoom_out.on_press(Message::ViewerZoomOut) } else { zoom_out };
+
+            let zoom_lbl = button(text(format!("{:.0}%", self.viewer_scale * 100.0)).size(11).font(BOLD))
+                .style(edge_btn)
+                .padding(Padding::from([4, 6]));
+            let zoom_lbl = if self.viewer_file.is_some() && !is_processing { zoom_lbl.on_press(Message::ViewerZoomReset) } else { zoom_lbl };
+
+            let zoom_in = button(text("+").size(13).font(BOLD))
+                .style(edge_btn)
+                .padding(Padding::from([4, 8]));
+            let zoom_in = if self.viewer_file.is_some() && !is_processing { zoom_in.on_press(Message::ViewerZoomIn) } else { zoom_in };
+
+            let fit_width_btn = button(text("↔").size(12).font(BOLD))
+                .style(edge_btn)
+                .padding(Padding::from([4, 8]));
+            let fit_width_btn = if self.viewer_file.is_some() && !is_processing { fit_width_btn.on_press(Message::ViewerFitWidth) } else { fit_width_btn };
+
+            let prev_btn = button(text("◀").size(10))
+                .style(edge_btn)
+                .padding(Padding::from([4, 7]));
             let prev_btn = if self.viewer_file.is_some() && self.viewer_current_page > 1 && !is_processing {
                 prev_btn.on_press(Message::ViewerPrevPage)
             } else {
                 prev_btn
             };
 
-            let page_text = if self.viewer_total_pages > 0 {
-                format!("{} of {}", self.viewer_current_page, self.viewer_total_pages)
-            } else {
-                "- of -".to_string()
-            };
-
-            let page_pill = container(text(page_text).size(11).font(BOLD))
-                .padding(Padding::from([4, 10]))
-                .style(container::rounded_box);
-
             let next_btn = button(text("▶").size(10))
-                .style(button::secondary)
-                .padding(Padding::from([4, 8]));
+                .style(edge_btn)
+                .padding(Padding::from([4, 7]));
             let next_btn = if self.viewer_file.is_some() && self.viewer_current_page < self.viewer_total_pages && !is_processing {
                 next_btn.on_press(Message::ViewerNextPage)
             } else {
                 next_btn
             };
 
-            let zoom_out = button(text("−").size(12).font(BOLD))
-                .style(button::secondary)
-                .padding(Padding::from([4, 8]));
-            let zoom_out = if self.viewer_file.is_some() && !is_processing { zoom_out.on_press(Message::ViewerZoomOut) } else { zoom_out };
+            let page_box = container(
+                row![
+                    text_input("", &self.viewer_page_input)
+                        .size(11)
+                        .width(36)
+                        .padding(Padding::from([2, 4]))
+                        .on_input(Message::ViewerPageInputChanged)
+                        .on_submit(Message::ViewerPageInputSubmitted),
+                    text(format!("dari {}", self.viewer_total_pages.max(1)))
+                        .size(11)
+                        .font(BOLD)
+                        .style(|_t: &Theme| text::Style { color: Some(Color::from_rgb8(0xaa, 0xaa, 0xb4)) })
+                ]
+                .spacing(5)
+                .align_y(Alignment::Center)
+            )
+            .padding(Padding::from([2, 6]))
+            .style(|_t: &Theme| container::Style {
+                background: Some(Background::Color(Color::from_rgb8(0x1a, 0x1a, 0x1e))),
+                border: Border {
+                    color: Color::from_rgb8(0x3e, 0x3e, 0x48),
+                    width: 1.0,
+                    radius: 3.0.into(),
+                },
+                ..Default::default()
+            });
 
-            let zoom_lbl = button(text(format!("{:.0}%", self.viewer_scale * 100.0)).size(11).font(BOLD))
-                .style(button::secondary)
+            let rotate_btn = button(text("⟳").size(14).font(BOLD))
+                .style(edge_btn)
                 .padding(Padding::from([4, 8]));
-            let zoom_lbl = if self.viewer_file.is_some() && !is_processing { zoom_lbl.on_press(Message::ViewerZoomReset) } else { zoom_lbl };
+            let rotate_btn = if self.viewer_file.is_some() && !is_processing {
+                rotate_btn.on_press(Message::ViewerRotateClockwise)
+            } else {
+                rotate_btn
+            };
 
-            let zoom_in = button(text("+").size(12).font(BOLD))
-                .style(button::secondary)
-                .padding(Padding::from([4, 8]));
-            let zoom_in = if self.viewer_file.is_some() && !is_processing { zoom_in.on_press(Message::ViewerZoomIn) } else { zoom_in };
+            let print_btn = button(
+                row![text("🖨️").size(12), text("Cetak").size(11)]
+                    .spacing(4)
+                    .align_y(Alignment::Center)
+            )
+            .style(edge_btn)
+            .padding(Padding::from([4, 8]));
+            let print_btn = if self.viewer_file.is_some() && !is_processing {
+                print_btn.on_press(Message::ViewerPrint)
+            } else {
+                print_btn
+            };
+
+            let tools_btn = button(
+                row![
+                    text("🛠️").size(12),
+                    text("Alat PDF").size(11).font(BOLD),
+                    text("▾").size(9)
+                ]
+                .spacing(5)
+                .align_y(Alignment::Center)
+            )
+            .style(if self.menu_open { edge_btn_active } else { edge_btn_primary })
+            .padding(Padding::from([4, 10]))
+            .on_press(Message::ToggleMenu);
 
             let status_indicator: Element<'_, Message> = match &self.status {
                 OperationStatus::Processing(msg) => {
@@ -1527,21 +1802,34 @@ impl App {
                 logo_badge,
                 sidebar_btn,
                 open_btn,
+                sep(),
+                copy_btn,
+                save_btn,
+                export_all_btn,
+                sep(),
                 title_with_status,
                 Space::new().width(Length::Fill),
-                row![zoom_out, zoom_lbl, zoom_in].spacing(2).align_y(Alignment::Center),
-                text("│").size(12).style(text::secondary),
-                row![prev_btn, page_pill, next_btn].spacing(3).align_y(Alignment::Center),
+                zoom_out,
+                zoom_lbl,
+                zoom_in,
+                fit_width_btn,
+                sep(),
+                prev_btn,
+                page_box,
+                next_btn,
+                sep(),
+                rotate_btn,
                 Space::new().width(Length::Fill),
-                menu_btn
+                print_btn,
+                tools_btn
             ]
-            .spacing(6)
+            .spacing(4)
             .align_y(Alignment::Center);
 
             container(top_row)
                 .width(Length::Fill)
                 .padding(Padding::from([4, 10]))
-                .style(container::rounded_box)
+                .style(edge_bar_style)
                 .into()
         } else {
             let back_btn = button(
@@ -1549,7 +1837,7 @@ impl App {
                     .spacing(5)
                     .align_y(Alignment::Center)
             )
-            .style(button::secondary)
+            .style(edge_btn)
             .on_press(Message::SwitchTab(ActiveTab::View))
             .padding(Padding::from([4, 10]));
 
@@ -1575,7 +1863,7 @@ impl App {
             container(top_row)
                 .width(Length::Fill)
                 .padding(Padding::from([4, 10]))
-                .style(container::rounded_box)
+                .style(edge_bar_style)
                 .into()
         }
     }
@@ -1585,15 +1873,15 @@ impl App {
             let is_current = tab == current;
             button(
                 row![
-                    text(label).size(13).font(if is_current { BOLD } else { Font::DEFAULT }),
+                    text(label).size(12).font(if is_current { BOLD } else { Font::DEFAULT }),
                     Space::new().width(Length::Fill),
-                    if is_current { text("●").size(10).style(text::primary) } else { text("") }
+                    if is_current { text("●").size(9).style(text::primary) } else { text("") }
                 ]
                 .align_y(Alignment::Center)
             )
-            .style(if is_current { button::primary } else { button::secondary })
+            .style(if is_current { edge_btn_active } else { edge_btn })
             .width(Length::Fill)
-            .padding(Padding::from([10, 14]))
+            .padding(Padding::from([8, 12]))
             .on_press(Message::SwitchTab(tab))
         };
 
@@ -1602,7 +1890,7 @@ impl App {
                 text("ALAT & UTILITAS").size(11).font(BOLD).style(text::secondary),
                 Space::new().width(Length::Fill),
                 button(text("✕").size(11))
-                    .style(button::text)
+                    .style(edge_btn)
                     .on_press(Message::CloseMenu)
             ]
             .align_y(Alignment::Center),
@@ -1614,7 +1902,7 @@ impl App {
             menu_item("✂️ Pisahkan PDF (Split)", ActiveTab::Split, self.active_tab),
             menu_item("🗜️ Kompres Dokumen PDF", ActiveTab::Compress, self.active_tab),
         ]
-        .spacing(8)
+        .spacing(6)
         .width(260);
 
         if self.viewer_file.is_some() {
@@ -1624,7 +1912,7 @@ impl App {
                         .spacing(6)
                         .align_y(Alignment::Center)
                 )
-                .style(button::secondary)
+                .style(edge_btn)
                 .width(Length::Fill)
                 .padding(Padding::from([6, 10]))
                 .on_press(msg)
@@ -1642,7 +1930,20 @@ impl App {
 
         container(menu_content)
             .padding(Padding::from([12, 14]))
-            .style(container::rounded_box)
+            .style(|_t: &Theme| container::Style {
+                background: Some(Background::Color(Color::from_rgb8(0x22, 0x22, 0x28))),
+                border: Border {
+                    color: Color::from_rgb8(0x3a, 0x3a, 0x46),
+                    width: 1.0,
+                    radius: 6.0.into(),
+                },
+                shadow: Shadow {
+                    color: Color::from_rgba8(0, 0, 0, 0.5),
+                    offset: Vector::new(0.0, 6.0),
+                    blur_radius: 14.0,
+                },
+                ..Default::default()
+            })
             .into()
     }
 
@@ -1720,8 +2021,21 @@ impl App {
                 let page_element: Element<'_, Message> = if let Some((handle, _)) = self.viewer_pages.get(&p) {
                     let page_img = image(handle.clone());
                     container(page_img)
-                        .padding(Padding::from(10))
-                        .style(container::rounded_box)
+                        .padding(0)
+                        .style(|_t: &Theme| container::Style {
+                            background: Some(Background::Color(Color::WHITE)),
+                            border: Border {
+                                color: Color::from_rgba8(0, 0, 0, 0.25),
+                                width: 1.0,
+                                radius: 2.0.into(),
+                            },
+                            shadow: Shadow {
+                                color: Color::from_rgba8(0, 0, 0, 0.45),
+                                offset: Vector::new(0.0, 4.0),
+                                blur_radius: 12.0,
+                            },
+                            ..Default::default()
+                        })
                         .into()
                 } else {
                     let (pw, ph) = if self.viewer_page_dims.0 > 0 {
@@ -1741,7 +2055,20 @@ impl App {
                     .height(ph)
                     .center_x(pw)
                     .center_y(ph)
-                    .style(container::rounded_box)
+                    .style(|_t: &Theme| container::Style {
+                        background: Some(Background::Color(Color::WHITE)),
+                        border: Border {
+                            color: Color::from_rgba8(0, 0, 0, 0.15),
+                            width: 1.0,
+                            radius: 2.0.into(),
+                        },
+                        shadow: Shadow {
+                            color: Color::from_rgba8(0, 0, 0, 0.3),
+                            offset: Vector::new(0.0, 3.0),
+                            blur_radius: 8.0,
+                        },
+                        ..Default::default()
+                    })
                     .into()
                 };
 
@@ -1751,7 +2078,7 @@ impl App {
             let scroll_content = container(pages_col)
                 .width(Length::Fill)
                 .center_x(Length::Fill)
-                .padding(Padding::from([16, 20]));
+                .padding(Padding::from([20, 24]));
 
             let main_scroll = scrollable(scroll_content)
                 .id("viewer_scroll")
@@ -1759,6 +2086,14 @@ impl App {
                 .on_scroll(|vp| Message::ViewerScrolled {
                     relative_y: vp.relative_offset().y,
                     content_taller: true,
+                });
+
+            let canvas = container(main_scroll)
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .style(|_t: &Theme| container::Style {
+                    background: Some(Background::Color(Color::from_rgb8(0x32, 0x34, 0x38))),
+                    ..Default::default()
                 });
 
             if self.context_menu_open {
@@ -1775,7 +2110,7 @@ impl App {
                         .spacing(10)
                         .align_y(Alignment::Center)
                     )
-                    .style(button::secondary)
+                    .style(edge_btn)
                     .width(Length::Fill)
                     .padding(Padding::from([8, 12]))
                     .on_press(msg)
@@ -1787,23 +2122,37 @@ impl App {
                             text(format!("Aksi Halaman {}", self.viewer_current_page)).size(12).font(BOLD).style(text::primary),
                             Space::new().width(Length::Fill),
                             button(text("✕").size(11))
-                                .style(button::text)
+                                .style(edge_btn)
                                 .on_press(Message::CloseContextMenu)
                         ]
                         .align_y(Alignment::Center),
                         rule::horizontal(1),
                         action_btn("📋", "Salin Gambar ke Clipboard", "Paste langsung (Ctrl+V) ke WA/Word", Message::ViewerCopyPageToClipboard),
-                        action_btn("🖼️", "Simpan Gambar (PNG)...", "Ekspor gambar lossless jernih", Message::ViewerExportPagePng),
-                        action_btn("📷", "Simpan Gambar (JPG)...", "Ekspor gambar foto hemat ukuran", Message::ViewerExportPageJpg),
+                        action_btn("🖼️", "Simpan Gambar (PNG)...", "Ekspor gambar beresolusi tinggi", Message::ViewerExportPagePng),
+                        action_btn("📷", "Simpan Gambar (JPG)...", "Ekspor file JPG standar", Message::ViewerExportPageJpg),
                         action_btn("📄", "Simpan Halaman sebagai PDF...", "Ekstrak halaman ini ke file PDF baru", Message::ViewerExportPagePdf),
+                        action_btn("📁", "Ekspor Semua Halaman...", "Simpan seluruh halaman PDF ke folder", Message::ViewerExportAll),
                     ]
                     .spacing(6)
                     .width(280)
                 )
                 .padding(Padding::from([10, 14]))
-                .style(container::rounded_box);
+                .style(|_t: &Theme| container::Style {
+                    background: Some(Background::Color(Color::from_rgb8(0x22, 0x22, 0x28))),
+                    border: Border {
+                        color: Color::from_rgb8(0x3a, 0x3a, 0x46),
+                        width: 1.0,
+                        radius: 6.0.into(),
+                    },
+                    shadow: Shadow {
+                        color: Color::from_rgba8(0, 0, 0, 0.5),
+                        offset: Vector::new(0.0, 6.0),
+                        blur_radius: 14.0,
+                    },
+                    ..Default::default()
+                });
 
-                let dismissible_scroll = mouse_area(main_scroll)
+                let dismissible_scroll = mouse_area(canvas)
                     .on_press(Message::CloseContextMenu);
 
                 row![
@@ -1814,13 +2163,13 @@ impl App {
                 .height(Length::Fill)
                 .into()
             } else {
-                main_scroll.into()
+                canvas.into()
             }
         } else {
             container(
                 column![
                     text("📖").size(48),
-                    text("PDF Reader Teringan di Muka Bumi").size(17).font(BOLD),
+                    text("PD - Modern Edge-Style PDF Reader").size(17).font(BOLD),
                     text("Buka file dokumen PDF apa saja untuk membaca secara instan.").size(13).style(text::secondary),
                     text("Ditenagai oleh rasterizer Pure-Rust (hayro) tanpa dependency C/C++ berat dan tanpa runtime Electron.")
                         .size(11)
@@ -1834,7 +2183,7 @@ impl App {
                         .spacing(8)
                         .align_y(Alignment::Center)
                     )
-                    .style(button::primary)
+                    .style(edge_btn_primary)
                     .padding(Padding::from([10, 20]))
                     .on_press(Message::PickViewerFile)
                 ]
@@ -1845,7 +2194,10 @@ impl App {
             .height(Length::Fill)
             .center_x(Length::Fill)
             .center_y(Length::Fill)
-            .style(container::rounded_box)
+            .style(|_t: &Theme| container::Style {
+                background: Some(Background::Color(Color::from_rgb8(0x28, 0x29, 0x2e))),
+                ..Default::default()
+            })
             .into()
         }
     }
@@ -2760,3 +3112,46 @@ fn format_file_size(bytes: u64) -> String {
         format!("{:.2} MB", bytes as f64 / (1024.0 * 1024.0))
     }
 }
+
+fn rotate_rgba_clockwise(width: u32, height: u32, data: &[u8], degrees: usize) -> (u32, u32, Vec<u8>) {
+    match degrees % 360 {
+        90 => {
+            let mut out = vec![0u8; data.len()];
+            for y in 0..height {
+                for x in 0..width {
+                    let src_idx = ((y * width + x) * 4) as usize;
+                    let dest_x = height - 1 - y;
+                    let dest_y = x;
+                    let dest_idx = ((dest_y * height + dest_x) * 4) as usize;
+                    out[dest_idx..dest_idx + 4].copy_from_slice(&data[src_idx..src_idx + 4]);
+                }
+            }
+            (height, width, out)
+        }
+        180 => {
+            let mut out = vec![0u8; data.len()];
+            let total_pixels = (width * height) as usize;
+            for i in 0..total_pixels {
+                let src_idx = i * 4;
+                let dest_idx = (total_pixels - 1 - i) * 4;
+                out[dest_idx..dest_idx + 4].copy_from_slice(&data[src_idx..src_idx + 4]);
+            }
+            (width, height, out)
+        }
+        270 => {
+            let mut out = vec![0u8; data.len()];
+            for y in 0..height {
+                for x in 0..width {
+                    let src_idx = ((y * width + x) * 4) as usize;
+                    let dest_x = y;
+                    let dest_y = width - 1 - x;
+                    let dest_idx = ((dest_y * width + dest_x) * 4) as usize;
+                    out[dest_idx..dest_idx + 4].copy_from_slice(&data[src_idx..src_idx + 4]);
+                }
+            }
+            (height, width, out)
+        }
+        _ => (width, height, data.to_vec()),
+    }
+}
+
