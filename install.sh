@@ -58,6 +58,19 @@ mkdir -p "$INSTALL_DIR"
 TEMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TEMP_DIR"' EXIT
 
+IS_UPDATE=false
+if [ -f "${INSTALL_DIR}/pd" ]; then
+    IS_UPDATE=true
+    echo -e "${CYAN}[PD] Aplikasi pd sudah terpasang. Memulai proses update ke versi terbaru...${NC}"
+    if pgrep -x "pd" >/dev/null 2>&1; then
+        echo -e "${YELLOW}[PD] Menutup instans pd yang sedang berjalan agar dapat diperbarui...${NC}"
+        pkill -x "pd" || true
+        sleep 0.5
+    fi
+else
+    echo -e "${CYAN}[PD] Memulai instalasi baru pd...${NC}"
+fi
+
 DOWNLOAD_URL=""
 LATEST_TAG=""
 
@@ -238,6 +251,12 @@ EOF
 fi
 
 echo ""
-echo -e "${GREEN}${BOLD}Instalasi selesai! PD - Desktop PDF Utility siap digunakan.${NC}"
+if [ "$IS_UPDATE" = true ]; then
+    echo -e "${GREEN}${BOLD}Update selesai! PD berhasil diperbarui ke versi ${LATEST_TAG}.${NC}"
+else
+    echo -e "${GREEN}${BOLD}Instalasi selesai! PD - Desktop PDF Utility siap digunakan.${NC}"
+fi
 echo "Jalankan 'pd' di terminal atau langsung double-click file PDF apapun untuk membukanya!"
+echo ""
+
 

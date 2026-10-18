@@ -49,6 +49,19 @@ if (-not (Test-Path -Path $InstallDir)) {
 
 $ZipPath = Join-Path $env:TEMP "pd-windows-x86_64.zip"
 $ExePath = Join-Path $InstallDir "pd.exe"
+$IsUpdate = Test-Path -Path $ExePath
+
+if ($IsUpdate) {
+    Write-Step "Aplikasi pd sudah terpasang. Memulai proses update ke versi terbaru..."
+    $RunningPd = Get-Process -Name "pd" -ErrorAction SilentlyContinue
+    if ($RunningPd) {
+        Write-Step "Menutup aplikasi pd yang sedang berjalan agar binary dapat diperbarui..."
+        $RunningPd | Stop-Process -Force
+        Start-Sleep -Milliseconds 500
+    }
+} else {
+    Write-Step "Memulai instalasi baru pd..."
+}
 
 # 3. Query GitHub Releases API
 $ApiUrl = "https://api.github.com/repos/$Repo/releases/latest"
@@ -194,6 +207,11 @@ try {
 }
 
 Write-Host ""
-Write-SuccessMsg "Instalasi selesai! PD - Desktop PDF Utility siap digunakan."
+if ($IsUpdate) {
+    Write-SuccessMsg "Update selesai! PD berhasil diperbarui ke versi $TagName."
+} else {
+    Write-SuccessMsg "Instalasi selesai! PD - Desktop PDF Utility siap digunakan."
+}
 Write-Host "Anda dapat menjalankan aplikasi dengan mengetik 'pd' di terminal, melalui Start Menu, atau langsung double-click file PDF apapun!" -ForegroundColor Gray
 Write-Host ""
+
