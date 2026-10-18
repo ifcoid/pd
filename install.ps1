@@ -174,6 +174,8 @@ try {
     Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\App Paths\pd.exe" -Name "Path" -Value $InstallDir -Force
 
     # Daftarkan di Applications
+    New-Item -Path "HKCU:\Software\Classes\Applications\pd.exe" -Force | Out-Null
+    Set-ItemProperty -Path "HKCU:\Software\Classes\Applications\pd.exe" -Name "FriendlyAppName" -Value "PD - PDF Reader & Utility" -Force
     New-Item -Path "HKCU:\Software\Classes\Applications\pd.exe\shell\open\command" -Value $Command -Force | Out-Null
     New-Item -Path "HKCU:\Software\Classes\Applications\pd.exe\SupportedTypes" -Force | Out-Null
     Set-ItemProperty -Path "HKCU:\Software\Classes\Applications\pd.exe\SupportedTypes" -Name ".pdf" -Value "" -Force
