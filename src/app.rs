@@ -103,7 +103,6 @@ pub enum Message {
     ViewerCopyPageToClipboard,
     ViewerExportPagePdf,
     ViewerExportPdfCompleted(Result<PathBuf, String>),
-    ToggleContextMenu,
     CloseContextMenu,
     EventOccurred(Event),
 
@@ -305,7 +304,9 @@ impl App {
 
     pub fn subscription(&self) -> Subscription<Message> {
         if self.active_tab == ActiveTab::View && self.viewer_file.is_some() {
-            event::listen().map(Message::EventOccurred)
+            event::listen_with(|event, _status, _window| {
+                Some(Message::EventOccurred(event))
+            })
         } else {
             Subscription::none()
         }
@@ -336,13 +337,16 @@ impl App {
                     return Task::none();
                 }
 
-                let is_processing = matches!(self.status, OperationStatus::Processing(_));
-                if is_processing {
-                    return Task::none();
-                }
-
                 match event {
+                    Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Right)) => {
+                        self.context_menu_open = !self.context_menu_open;
+                    }
                     Event::Mouse(mouse::Event::WheelScrolled { delta }) => {
+                        let is_processing = matches!(self.status, OperationStatus::Processing(_));
+                        if is_processing {
+                            return Task::none();
+                        }
+
                         let y = match delta {
                             mouse::ScrollDelta::Lines { y, .. } => y,
                             mouse::ScrollDelta::Pixels { y, .. } => y,
@@ -354,14 +358,14 @@ impl App {
                             .unwrap_or(true);
 
                         if can_nav {
-                            if y < 0.0 {
+                            if y < -0.1 {
                                 // Scrolling down -> next page!
                                 if self.viewer_current_page < self.viewer_total_pages {
                                     self.viewer_last_scroll_nav = Some(now);
                                     self.viewer_current_page += 1;
                                     return self.render_current_viewer_page();
                                 }
-                            } else if y > 0.0 {
+                            } else if y > 0.1 {
                                 // Scrolling up -> previous page!
                                 if self.viewer_current_page > 1 {
                                     self.viewer_last_scroll_nav = Some(now);
@@ -375,14 +379,16 @@ impl App {
                         match key {
                             keyboard::Key::Named(keyboard::key::Named::PageDown)
                             | keyboard::Key::Named(keyboard::key::Named::ArrowDown) => {
-                                if self.viewer_current_page < self.viewer_total_pages {
+                                let is_processing = matches!(self.status, OperationStatus::Processing(_));
+                                if !is_processing && self.viewer_current_page < self.viewer_total_pages {
                                     self.viewer_current_page += 1;
                                     return self.render_current_viewer_page();
                                 }
                             }
                             keyboard::Key::Named(keyboard::key::Named::PageUp)
                             | keyboard::Key::Named(keyboard::key::Named::ArrowUp) => {
-                                if self.viewer_current_page > 1 {
+                                let is_processing = matches!(self.status, OperationStatus::Processing(_));
+                                if !is_processing && self.viewer_current_page > 1 {
                                     self.viewer_current_page -= 1;
                                     return self.render_current_viewer_page();
                                 }
@@ -396,10 +402,6 @@ impl App {
                     }
                     _ => {}
                 }
-                Task::none()
-            }
-            Message::ToggleContextMenu => {
-                self.context_menu_open = !self.context_menu_open;
                 Task::none()
             }
             Message::CloseContextMenu => {
@@ -1622,14 +1624,10 @@ impl App {
                 .padding(Padding::from(10))
                 .style(container::rounded_box);
 
-            let scroll_content = mouse_area(
-                container(paper_container)
-                    .width(Length::Fill)
-                    .center_x(Length::Fill)
-                    .padding(Padding::from(16))
-            )
-            .on_press(Message::CloseContextMenu)
-            .on_right_press(Message::ToggleContextMenu);
+            let scroll_content = container(paper_container)
+                .width(Length::Fill)
+                .center_x(Length::Fill)
+                .padding(Padding::from(16));
 
             let main_scroll = scrollable(scroll_content)
                 .height(Length::Fill);
@@ -1676,8 +1674,11 @@ impl App {
                 .padding(Padding::from([10, 14]))
                 .style(container::rounded_box);
 
+                let dismissible_scroll = mouse_area(main_scroll)
+                    .on_press(Message::CloseContextMenu);
+
                 row![
-                    container(main_scroll).width(Length::Fill).height(Length::Fill),
+                    container(dismissible_scroll).width(Length::Fill).height(Length::Fill),
                     container(menu_card).padding(Padding::from([12, 16])).align_y(Alignment::Start)
                 ]
                 .width(Length::Fill)
