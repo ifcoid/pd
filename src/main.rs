@@ -139,6 +139,7 @@ fn main() -> iced::Result {
     iced::application(App::boot, App::update, App::view)
         .title("pd")
         .theme(App::theme)
+        .subscription(App::subscription)
         .window(window)
         .run()
 }

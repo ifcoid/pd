@@ -1,8 +1,10 @@
 use std::path::PathBuf;
+use std::time::Instant;
+use iced::event::{self, Event};
 use iced::widget::{
     button, column, container, image, progress_bar, row, rule, scrollable, text, text_input, Space,
 };
-use iced::{Alignment, Element, Font, Length, Padding, Task, Theme};
+use iced::{keyboard, mouse, Alignment, Element, Font, Length, Padding, Subscription, Task, Theme};
 
 use crate::pdf_ops::{
     compress_pdf, export_all_pdf_pages_to_images, export_pdf_page_to_image,
@@ -44,6 +46,9 @@ pub struct App {
     pub viewer_total_pages: usize,
     pub viewer_scale: f32,
     pub viewer_image_handle: Option<image::Handle>,
+    pub viewer_scroll_relative_y: f32,
+    pub viewer_content_taller: bool,
+    pub viewer_last_scroll_nav: Option<Instant>,
     pub sidebar_open: bool,
 
     // PDF to Images Tab State
@@ -95,6 +100,11 @@ pub enum Message {
     ViewerExportAll,
     ViewerExportCompleted(Result<PathBuf, String>),
     ViewerExportAllCompleted(Result<usize, String>),
+    ViewerScrolled {
+        relative_y: f32,
+        content_taller: bool,
+    },
+    EventOccurred(Event),
 
     // PDF to Images Actions
     PickPdfToImgFile,
@@ -159,6 +169,9 @@ impl App {
             viewer_total_pages: 0,
             viewer_scale: 1.25,
             viewer_image_handle: None,
+            viewer_scroll_relative_y: 0.0,
+            viewer_content_taller: false,
+            viewer_last_scroll_nav: None,
             pdf_to_img_file: None,
             pdf_to_img_total_pages: 0,
             pdf_to_img_range: String::new(),
@@ -289,6 +302,14 @@ impl App {
         Theme::TokyoNight
     }
 
+    pub fn subscription(&self) -> Subscription<Message> {
+        if self.active_tab == ActiveTab::View && self.viewer_file.is_some() {
+            event::listen().map(Message::EventOccurred)
+        } else {
+            Subscription::none()
+        }
+    }
+
     fn render_current_viewer_page(&mut self) -> Task<Message> {
         let file = match &self.viewer_file {
             Some(f) => f.clone(),
@@ -309,6 +330,76 @@ impl App {
 
     pub fn update(&mut self, message: Message) -> Task<Message> {
         match message {
+            Message::ViewerScrolled { relative_y, content_taller } => {
+                self.viewer_scroll_relative_y = relative_y;
+                self.viewer_content_taller = content_taller;
+                Task::none()
+            }
+            Message::EventOccurred(event) => {
+                if self.active_tab != ActiveTab::View || self.viewer_file.is_none() {
+                    return Task::none();
+                }
+
+                let is_processing = matches!(self.status, OperationStatus::Processing(_));
+                if is_processing {
+                    return Task::none();
+                }
+
+                match event {
+                    Event::Mouse(mouse::Event::WheelScrolled { delta }) => {
+                        let y = match delta {
+                            mouse::ScrollDelta::Lines { y, .. } => y,
+                            mouse::ScrollDelta::Pixels { y, .. } => y,
+                        };
+
+                        let now = Instant::now();
+                        let can_nav = self.viewer_last_scroll_nav
+                            .map(|t| now.duration_since(t).as_millis() > 250)
+                            .unwrap_or(true);
+
+                        if y < 0.0 {
+                            // Scrolling down
+                            if !self.viewer_content_taller || self.viewer_scroll_relative_y >= 0.95 {
+                                if can_nav && self.viewer_current_page < self.viewer_total_pages {
+                                    self.viewer_last_scroll_nav = Some(now);
+                                    self.viewer_current_page += 1;
+                                    self.viewer_scroll_relative_y = 0.0;
+                                    return self.render_current_viewer_page();
+                                }
+                            }
+                        } else if y > 0.0 {
+                            // Scrolling up
+                            if !self.viewer_content_taller || self.viewer_scroll_relative_y <= 0.05 {
+                                if can_nav && self.viewer_current_page > 1 {
+                                    self.viewer_last_scroll_nav = Some(now);
+                                    self.viewer_current_page -= 1;
+                                    self.viewer_scroll_relative_y = 1.0;
+                                    return self.render_current_viewer_page();
+                                }
+                            }
+                        }
+                    }
+                    Event::Keyboard(keyboard::Event::KeyPressed { key, .. }) => {
+                        match key {
+                            keyboard::Key::Named(keyboard::key::Named::PageDown) => {
+                                if self.viewer_current_page < self.viewer_total_pages {
+                                    self.viewer_current_page += 1;
+                                    return self.render_current_viewer_page();
+                                }
+                            }
+                            keyboard::Key::Named(keyboard::key::Named::PageUp) => {
+                                if self.viewer_current_page > 1 {
+                                    self.viewer_current_page -= 1;
+                                    return self.render_current_viewer_page();
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                    _ => {}
+                }
+                Task::none()
+            }
             Message::ToggleMenu => {
                 self.menu_open = !self.menu_open;
                 Task::none()
@@ -1451,6 +1542,10 @@ impl App {
                     .padding(Padding::from(16))
             )
             .height(Length::Fill)
+            .on_scroll(|vp| Message::ViewerScrolled {
+                relative_y: vp.relative_offset().y,
+                content_taller: vp.content_bounds().height > vp.bounds().height,
+            })
             .into()
         } else {
             container(
