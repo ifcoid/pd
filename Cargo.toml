@@ -1,8 +1,8 @@
 [package]
 name = "pd"
-version = "0.1.3"
+version = "0.1.4"
 edition = "2024"
-description = "Ultra-lightweight pure-Rust offline PDF reader & desktop utility (View, Images to PDF, Export PNG/JPG, Merge, Split, Compress)"
+description = "Ultra-lightweight pure-Rust offline PDF reader & desktop utility (View, PDF to Images, Images to PDF, Merge, Split, Compress)"
 homepage = "https://if.co.id/pd/"
 repository = "https://github.com/ifcoid/pd"
 license = "MIT"

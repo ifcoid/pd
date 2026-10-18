@@ -62,6 +62,32 @@ pub fn export_pdf_page_to_image(
     Ok(output_path.to_path_buf())
 }
 
+/// Exports specific pages of a PDF to images inside an output directory.
+pub fn export_pdf_pages_to_dir(
+    pdf_path: &Path,
+    pages: &[usize],
+    output_dir: &Path,
+    format: ExportImageFormat,
+    scale: f32,
+) -> Result<Vec<PathBuf>> {
+    let base_name = pdf_path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("document");
+
+    let ext = format.extension();
+    let mut exported_files = Vec::with_capacity(pages.len());
+
+    for &page_idx in pages {
+        let file_name = format!("{}_page_{:03}.{}", base_name, page_idx, ext);
+        let out_path = output_dir.join(file_name);
+        export_pdf_page_to_image(pdf_path, page_idx, &out_path, format, scale)?;
+        exported_files.push(out_path);
+    }
+
+    Ok(exported_files)
+}
+
 /// Exports all pages of a PDF to images inside an output directory.
 pub fn export_all_pdf_pages_to_images(
     pdf_path: &Path,
@@ -71,21 +97,7 @@ pub fn export_all_pdf_pages_to_images(
 ) -> Result<Vec<PathBuf>> {
     let first_page = render_page_to_rgba(pdf_path, 1, scale)?;
     let total_pages = first_page.total_pages;
-
-    let base_name = pdf_path
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("document");
-
-    let ext = format.extension();
-    let mut exported_files = Vec::with_capacity(total_pages);
-
-    for page_idx in 1..=total_pages {
-        let file_name = format!("{}_page_{:03}.{}", base_name, page_idx, ext);
-        let out_path = output_dir.join(file_name);
-        export_pdf_page_to_image(pdf_path, page_idx, &out_path, format, scale)?;
-        exported_files.push(out_path);
-    }
-
-    Ok(exported_files)
+    let all_pages: Vec<usize> = (1..=total_pages).collect();
+    export_pdf_pages_to_dir(pdf_path, &all_pages, output_dir, format, scale)
 }
+

@@ -27,22 +27,27 @@ Membangun aplikasi desktop *cross-platform* berperforma tinggi menggunakan **Rus
 ## 3. Core Features (Minimum Viable Product / MVP)
 PD menggabungkan reader PDF ultra-ringan dengan alat manipulasi dokumen esensial:
 
-1. **View PDF & Export Gambar (Ultra-Lightweight Pure-Rust Reader):**
+1. **View PDF & Quick Export (Ultra-Lightweight Pure-Rust Reader):**
    * Membaca dan menampilkan dokumen PDF secara instan dengan *memory & CPU footprint* teringan di muka bumi.
    * Ditenagai 100% Rust murni tanpa dependensi runtime C++ eksternal (`pdfium.dll` atau Electron).
    * Navigasi halaman cepat (*Next Page*, *Previous Page*, dan indikator posisi halaman).
    * Kontrol pembesaran dinamis (*Zoom In*, *Zoom Out*, dan *Reset 100%*).
-   * **Ekspor Halaman ke PNG / JPG:** Menyimpan halaman PDF yang sedang dibuka menjadi file gambar resolusi tinggi dalam satu klik.
-2. **Images to PDF (Gambar ke PDF):**
+   * **Ekspor Cepat:** Simpan halaman aktif ke file gambar `PNG` atau `JPG`, atau ekspor seluruh halaman langsung ke folder tujuan.
+2. **PDF to Images (Ekspor PDF ke Gambar):**
+   * Tab khusus untuk mengekstrak dan mengekspor halaman dokumen PDF menjadi file gambar berkualitas tinggi (`PNG` atau `JPG`).
+   * Pilihan cakupan fleksibel: **Semua Halaman**, atau **Rentang Halaman Tertentu** (misal: `1, 3-5, 8`).
+   * Pilihan resolusi / kualitas gambar: **150 DPI (1.5x)**, **200 DPI (HD 2.0x)**, atau **300 DPI (Ultra HD 3.0x)**.
+   * Penyimpanan otomatis ke folder tujuan dengan penamaan rapi berurutan.
+3. **Images to PDF (Gambar ke PDF):**
    * Mengonversi satu atau beberapa file gambar (`.png`, `.jpg`, `.jpeg`, `.webp`, `.bmp`) menjadi satu dokumen PDF utuh.
    * Pengaturan urutan gambar yang fleksibel (*reorder* naik / turun / hapus).
    * Mempertahankan kualitas dan dimensi asli tiap gambar secara optimal.
-3. **Merge PDF:**
+4. **Merge PDF:**
    * Menggabungkan beberapa file PDF terpilih menjadi satu dokumen utuh.
    * Mendukung pengaturan urutan file (*reorder*).
-4. **Split PDF:**
+5. **Split PDF:**
    * Memecah file PDF berdasarkan rentang halaman (*page ranges*) tertentu menjadi dokumen terpisah.
-5. **Compress PDF:**
+6. **Compress PDF:**
    * Mengurangi ukuran file PDF dengan optimasi objek internal (*object streams*).
 
 ---

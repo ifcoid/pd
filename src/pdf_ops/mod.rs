@@ -7,7 +7,8 @@ pub mod viewer;
 
 pub use compressor::{compress_pdf, CompressionReport};
 pub use image_export::{
-    export_all_pdf_pages_to_images, export_pdf_page_to_image, ExportImageFormat,
+    export_all_pdf_pages_to_images, export_pdf_page_to_image, export_pdf_pages_to_dir,
+    ExportImageFormat,
 };
 pub use image_to_pdf::images_to_pdf;
 pub use merger::merge_pdfs;
@@ -140,6 +141,12 @@ mod tests {
         let _ = std::fs::create_dir_all(&all_dir);
         let all_exported = export_all_pdf_pages_to_images(&merged_path, &all_dir, ExportImageFormat::Png, 1.0).unwrap();
         assert_eq!(all_exported.len(), 5);
+
+        // 9. Test Export Pages Range to Dir
+        let range_dir = temp_dir.join("range_pages");
+        let _ = std::fs::create_dir_all(&range_dir);
+        let range_exported = export_pdf_pages_to_dir(&merged_path, &[1, 3, 5], &range_dir, ExportImageFormat::Jpeg, 1.0).unwrap();
+        assert_eq!(range_exported.len(), 3);
 
         // Clean up temporary test files
         let _ = std::fs::remove_dir_all(&temp_dir);

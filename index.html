@@ -577,7 +577,7 @@
             <polyline points="7 10 12 15 17 10"></polyline>
             <line x1="12" y1="15" x2="12" y2="3"></line>
           </svg>
-          Download Sekarang (v0.1.3)
+          Download Sekarang (v0.1.4)
         </a>
         <a href="https://github.com/ifcoid/pd" target="_blank" rel="noopener noreferrer" class="btn-secondary">
           Lihat Source Code
@@ -613,6 +613,7 @@
         <div class="preview-body">
           <div class="ui-tabs">
             <div class="ui-tab-btn ui-tab-active">📖 View PDF</div>
+            <div class="ui-tab-btn ui-tab-inactive">📷 PDF ke Gambar</div>
             <div class="ui-tab-btn ui-tab-inactive">🖼️ Gambar ke PDF</div>
             <div class="ui-tab-btn ui-tab-inactive">📑 Merge PDF</div>
             <div class="ui-tab-btn ui-tab-inactive">✂️ Split PDF</div>
@@ -625,10 +626,12 @@
               <span style="font-size: 13px; font-weight: 700; color: #7aa2f7;">📄 Proposal_Kerja_2026.pdf</span>
               <span style="font-size: 11px; color: #73daca; background: rgba(115,218,202,0.15); padding: 2px 8px; border-radius: 4px;">100% Pure-Rust</span>
             </div>
-            <div style="display: flex; gap: 10px; align-items: center; font-size: 12px; color: var(--text-muted);">
+            <div style="display: flex; gap: 8px; align-items: center; font-size: 12px; color: var(--text-muted);">
               <span>◀ Halaman 1 / 18 ▶</span>
               <span style="background: rgba(255,255,255,0.08); padding: 2px 8px; border-radius: 4px;">Zoom: 100%</span>
-              <span style="background: rgba(122,162,247,0.2); color: #7aa2f7; padding: 2px 8px; border-radius: 4px; font-weight: 700;">💾 Export PNG / JPG</span>
+              <span style="background: rgba(122,162,247,0.2); color: #7aa2f7; padding: 2px 8px; border-radius: 4px; font-weight: 700;">💾 PNG</span>
+              <span style="background: rgba(122,162,247,0.2); color: #7aa2f7; padding: 2px 8px; border-radius: 4px; font-weight: 700;">💾 JPG</span>
+              <span style="background: rgba(187,154,247,0.2); color: #bb9af7; padding: 2px 8px; border-radius: 4px; font-weight: 700;">📁 Semua Halaman</span>
             </div>
           </div>
 
@@ -652,9 +655,17 @@
       <div class="features-grid">
         <div class="feature-card" style="border-color: rgba(122, 162, 247, 0.4); background: rgba(33, 38, 45, 0.95);">
           <span class="feature-icon">📖</span>
-          <h3>View PDF & Export ke PNG/JPG</h3>
+          <h3>View PDF & Quick Export</h3>
           <p>
-            Membuka dan membaca dokumen PDF secara instan tanpa runtime berat (100% Rust murni, zero C++ / Electron). Navigasi halaman cepat, kontrol zoom halus, serta ekspor halaman PDF ke gambar PNG atau JPG dalam satu klik.
+            Membuka dan membaca dokumen PDF secara instan tanpa runtime berat (100% Rust murni, zero C++ / Electron). Navigasi halaman cepat, kontrol zoom halus, serta ekspor halaman aktif ke PNG atau JPG dalam satu klik.
+          </p>
+        </div>
+
+        <div class="feature-card" style="border-color: rgba(187, 154, 247, 0.4); background: rgba(33, 38, 45, 0.95);">
+          <span class="feature-icon">📷</span>
+          <h3>PDF ke Gambar (PDF to Images)</h3>
+          <p>
+            Ekspor halaman PDF menjadi file gambar berkualitas tinggi (PNG / JPG). Pilih semua halaman atau rentang nomor halaman tertentu dengan opsi resolusi tajam (150 DPI, 200 DPI HD, hingga 300 DPI Ultra HD).
           </p>
         </div>
 
@@ -712,7 +723,7 @@
     <section class="downloads-section container" id="downloads">
       <div class="section-title">
         <h2>Download Rilis Resmi</h2>
-        <p>Unduh binary siap pakai untuk sistem operasi Anda (Versi v0.1.3):</p>
+        <p>Unduh binary siap pakai untuk sistem operasi Anda (Versi v0.1.4):</p>
       </div>
 
       <div class="download-grid">
@@ -720,7 +731,7 @@
           <div class="os-icon">🪟</div>
           <h4>Windows</h4>
           <div class="os-arch">x86_64 (.zip)</div>
-          <a href="https://github.com/ifcoid/pd/releases/download/v0.1.3/pd-windows-x86_64.zip" class="download-btn-sm">
+          <a href="https://github.com/ifcoid/pd/releases/download/v0.1.4/pd-windows-x86_64.zip" class="download-btn-sm">
             Download ZIP
           </a>
         </div>
@@ -729,7 +740,7 @@
           <div class="os-icon">🐧</div>
           <h4>Linux</h4>
           <div class="os-arch">x86_64 (.tar.gz)</div>
-          <a href="https://github.com/ifcoid/pd/releases/download/v0.1.3/pd-linux-x86_64.tar.gz" class="download-btn-sm">
+          <a href="https://github.com/ifcoid/pd/releases/download/v0.1.4/pd-linux-x86_64.tar.gz" class="download-btn-sm">
             Download tar.gz
           </a>
         </div>
@@ -738,7 +749,7 @@
           <div class="os-icon">🍎</div>
           <h4>macOS (Apple Silicon)</h4>
           <div class="os-arch">M1 / M2 / M3 (.tar.gz)</div>
-          <a href="https://github.com/ifcoid/pd/releases/download/v0.1.3/pd-macos-aarch64.tar.gz" class="download-btn-sm">
+          <a href="https://github.com/ifcoid/pd/releases/download/v0.1.4/pd-macos-aarch64.tar.gz" class="download-btn-sm">
             Download tar.gz
           </a>
         </div>
@@ -747,7 +758,7 @@
           <div class="os-icon">🍏</div>
           <h4>macOS (Intel)</h4>
           <div class="os-arch">x86_64 (.tar.gz)</div>
-          <a href="https://github.com/ifcoid/pd/releases/download/v0.1.3/pd-macos-x86_64.tar.gz" class="download-btn-sm">
+          <a href="https://github.com/ifcoid/pd/releases/download/v0.1.4/pd-macos-x86_64.tar.gz" class="download-btn-sm">
             Download tar.gz
           </a>
         </div>
