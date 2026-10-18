@@ -1,6 +1,6 @@
 [package]
 name = "pd"
-version = "0.1.8"
+version = "0.1.9"
 edition = "2024"
 description = "Ultra-lightweight pure-Rust offline PDF reader & desktop utility (View, Right-Click Convert, Compress & Merge, PDF to Images, Images to PDF, Merge, Split, Compress)"
 homepage = "https://if.co.id/pd/"
@@ -17,3 +17,6 @@ iced = { version = "0.14.0", features = ["image"] }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 lopdf = "0.45.0"
 rfd = "0.17.2"
+
+[build-dependencies]
+winres = "0.1.12"

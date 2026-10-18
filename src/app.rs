@@ -67,11 +67,16 @@ pub struct App {
     // Compress Tab State
     pub compress_file: Option<PathBuf>,
     pub compress_report: Option<CompressionReport>,
+
+    // Header / Hamburger Menu
+    pub menu_open: bool,
 }
 
 #[derive(Debug, Clone)]
 pub enum Message {
     SwitchTab(ActiveTab),
+    ToggleMenu,
+    CloseMenu,
 
     // Viewer Actions
     PickViewerFile,
@@ -164,6 +169,7 @@ impl App {
             split_range_input: String::new(),
             compress_file: None,
             compress_report: None,
+            menu_open: false,
         }
     }
 
@@ -299,8 +305,17 @@ impl App {
 
     pub fn update(&mut self, message: Message) -> Task<Message> {
         match message {
+            Message::ToggleMenu => {
+                self.menu_open = !self.menu_open;
+                Task::none()
+            }
+            Message::CloseMenu => {
+                self.menu_open = false;
+                Task::none()
+            }
             Message::SwitchTab(tab) => {
                 self.active_tab = tab;
+                self.menu_open = false;
                 self.status = OperationStatus::Idle;
                 Task::none()
             }
@@ -999,8 +1014,7 @@ impl App {
     }
 
     pub fn view(&self) -> Element<'_, Message> {
-        let header = self.view_header();
-        let tabs = self.view_tabs();
+        let top_bar = self.view_top_bar();
         let status_bar = self.view_status();
 
         let content: Element<'_, Message> = match self.active_tab {
@@ -1012,165 +1026,252 @@ impl App {
             ActiveTab::Compress => self.view_compress_tab(),
         };
 
-        let main_layout = column![
-            header,
-            tabs,
-            status_bar,
+        let body: Element<'_, Message> = if self.menu_open {
+            row![
+                container(content)
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+                    .padding(if self.active_tab == ActiveTab::View { 0 } else { 16 }),
+                container(self.view_menu_dropdown())
+                    .padding(Padding::from([8, 12]))
+            ]
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .into()
+        } else {
             container(content)
                 .width(Length::Fill)
                 .height(Length::Fill)
-                .padding(Padding::from(16))
+                .padding(if self.active_tab == ActiveTab::View { 0 } else { 16 })
+                .into()
+        };
+
+        let main_layout = column![
+            top_bar,
+            status_bar,
+            body
         ]
-        .spacing(12)
+        .spacing(0)
         .width(Length::Fill)
         .height(Length::Fill);
 
         container(main_layout)
             .width(Length::Fill)
             .height(Length::Fill)
+            .padding(0)
             .into()
     }
 
-    fn view_header(&self) -> Element<'_, Message> {
-        let app_badge = container(
-            text("PURE RUST • ULTRA-LIGHT")
-                .size(10)
-                .style(text::primary)
+    fn view_top_bar(&self) -> Element<'_, Message> {
+        let is_processing = matches!(self.status, OperationStatus::Processing(_));
+
+        let logo_badge = container(
+            text("PD").size(12).font(BOLD).style(text::primary)
         )
-        .padding(Padding::from([3, 8]))
+        .padding(Padding::from([4, 8]))
         .style(container::rounded_box);
 
-        let title_col = column![
+        let burger_btn = button(
             row![
-                text("pd").size(26).font(BOLD),
-                text(" • Ultra-Lightweight PDF Reader & Utility").size(15).style(text::secondary),
-                Space::new().width(10),
-                app_badge
+                text(if self.menu_open { "✕" } else { "☰" }).size(14).font(BOLD),
+                text("Alat").size(12)
             ]
-            .align_y(Alignment::Center),
-            text("PDF reader teringan di muka bumi dan utilitas manipulasi dokumen 100% offline")
-                .size(12)
-                .style(text::secondary)
-        ]
-        .spacing(2);
+            .spacing(6)
+            .align_y(Alignment::Center)
+        )
+        .style(if self.menu_open { button::primary } else { button::secondary })
+        .on_press(Message::ToggleMenu)
+        .padding(Padding::from([6, 12]));
 
-        container(title_col)
-            .width(Length::Fill)
-            .padding(Padding::from([12, 20]))
-            .into()
+        if self.active_tab == ActiveTab::View {
+            let open_btn = button(
+                row![text("📂"), text("Buka").size(12)]
+                    .spacing(5)
+                    .align_y(Alignment::Center)
+            )
+            .style(button::secondary)
+            .padding(Padding::from([6, 10]));
+            let open_btn = if is_processing { open_btn } else { open_btn.on_press(Message::PickViewerFile) };
+
+            let file_name = self.viewer_file.as_ref()
+                .and_then(|p| p.file_name())
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_else(|| "Belum ada dokumen terbuka".to_string());
+
+            let display_name = if file_name.len() > 26 {
+                format!("{}...", &file_name[..24])
+            } else {
+                file_name
+            };
+
+            let page_text = if self.viewer_total_pages > 0 {
+                format!("{} / {}", self.viewer_current_page, self.viewer_total_pages)
+            } else {
+                "- / -".to_string()
+            };
+
+            let prev_btn = button(text("◀").size(11))
+                .style(button::secondary)
+                .padding(Padding::from([5, 9]));
+            let prev_btn = if self.viewer_file.is_some() && self.viewer_current_page > 1 && !is_processing {
+                prev_btn.on_press(Message::ViewerPrevPage)
+            } else {
+                prev_btn
+            };
+
+            let next_btn = button(text("▶").size(11))
+                .style(button::secondary)
+                .padding(Padding::from([5, 9]));
+            let next_btn = if self.viewer_file.is_some() && self.viewer_current_page < self.viewer_total_pages && !is_processing {
+                next_btn.on_press(Message::ViewerNextPage)
+            } else {
+                next_btn
+            };
+
+            let page_pill = container(text(page_text).size(12).font(BOLD))
+                .padding(Padding::from([4, 10]))
+                .style(container::rounded_box);
+
+            let zoom_out = button(text("−").size(13).font(BOLD))
+                .style(button::secondary)
+                .padding(Padding::from([4, 8]));
+            let zoom_out = if self.viewer_file.is_some() && !is_processing { zoom_out.on_press(Message::ViewerZoomOut) } else { zoom_out };
+
+            let zoom_lbl = button(text(format!("{:.0}%", self.viewer_scale * 100.0)).size(11).font(BOLD))
+                .style(button::secondary)
+                .padding(Padding::from([4, 8]));
+            let zoom_lbl = if self.viewer_file.is_some() && !is_processing { zoom_lbl.on_press(Message::ViewerZoomReset) } else { zoom_lbl };
+
+            let zoom_in = button(text("+").size(13).font(BOLD))
+                .style(button::secondary)
+                .padding(Padding::from([4, 8]));
+            let zoom_in = if self.viewer_file.is_some() && !is_processing { zoom_in.on_press(Message::ViewerZoomIn) } else { zoom_in };
+
+            let png_btn = button(
+                row![text("💾"), text("PNG").size(11).font(BOLD)]
+                    .spacing(4)
+                    .align_y(Alignment::Center)
+            )
+            .style(button::secondary)
+            .padding(Padding::from([5, 8]));
+            let png_btn = if self.viewer_file.is_some() && !is_processing { png_btn.on_press(Message::ViewerExportPagePng) } else { png_btn };
+
+            let jpg_btn = button(
+                row![text("💾"), text("JPG").size(11).font(BOLD)]
+                    .spacing(4)
+                    .align_y(Alignment::Center)
+            )
+            .style(button::secondary)
+            .padding(Padding::from([5, 8]));
+            let jpg_btn = if self.viewer_file.is_some() && !is_processing { jpg_btn.on_press(Message::ViewerExportPageJpg) } else { jpg_btn };
+
+            let all_btn = button(
+                row![text("📁"), text("Semua").size(11).font(BOLD)]
+                    .spacing(4)
+                    .align_y(Alignment::Center)
+            )
+            .style(button::secondary)
+            .padding(Padding::from([5, 8]));
+            let all_btn = if self.viewer_file.is_some() && !is_processing { all_btn.on_press(Message::ViewerExportAll) } else { all_btn };
+
+            let top_row = row![
+                logo_badge,
+                open_btn,
+                text(display_name).size(13).font(BOLD),
+                Space::new().width(Length::Fill),
+                row![prev_btn, page_pill, next_btn].spacing(4).align_y(Alignment::Center),
+                Space::new().width(10),
+                row![zoom_out, zoom_lbl, zoom_in].spacing(2).align_y(Alignment::Center),
+                Space::new().width(10),
+                row![png_btn, jpg_btn, all_btn].spacing(4).align_y(Alignment::Center),
+                Space::new().width(10),
+                burger_btn
+            ]
+            .spacing(8)
+            .align_y(Alignment::Center);
+
+            container(top_row)
+                .width(Length::Fill)
+                .padding(Padding::from([6, 12]))
+                .style(container::rounded_box)
+                .into()
+        } else {
+            let back_btn = button(
+                row![text("←"), text("Kembali ke Dokumen").size(12)]
+                    .spacing(5)
+                    .align_y(Alignment::Center)
+            )
+            .style(button::secondary)
+            .on_press(Message::SwitchTab(ActiveTab::View))
+            .padding(Padding::from([6, 12]));
+
+            let tab_title = match self.active_tab {
+                ActiveTab::View => "Viewer Dokumen",
+                ActiveTab::PdfToImages => "📷 Konversi PDF ke Gambar",
+                ActiveTab::ImagesToPdf => "🖼️ Konversi Gambar ke PDF",
+                ActiveTab::Merge => "🔀 Gabungkan Dokumen PDF (Merge)",
+                ActiveTab::Split => "✂️ Pisahkan Halaman PDF (Split)",
+                ActiveTab::Compress => "🗜️ Kompres Dokumen PDF",
+            };
+
+            let top_row = row![
+                logo_badge,
+                back_btn,
+                text(tab_title).size(14).font(BOLD),
+                Space::new().width(Length::Fill),
+                burger_btn
+            ]
+            .spacing(12)
+            .align_y(Alignment::Center);
+
+            container(top_row)
+                .width(Length::Fill)
+                .padding(Padding::from([6, 12]))
+                .style(container::rounded_box)
+                .into()
+        }
     }
 
-    fn view_tabs(&self) -> Element<'_, Message> {
-        let view_btn = button(
-            row![
-                text("👁️"),
-                text("View PDF").size(13).font(BOLD)
-            ]
-            .spacing(6)
-            .align_y(Alignment::Center)
-        )
-        .style(if self.active_tab == ActiveTab::View {
-            button::primary
-        } else {
-            button::secondary
-        })
-        .on_press(Message::SwitchTab(ActiveTab::View))
-        .padding(Padding::from([8, 16]));
-
-        let pdf_to_img_btn = button(
-            row![
-                text("📷"),
-                text("PDF ke Gambar").size(13).font(BOLD)
-            ]
-            .spacing(6)
-            .align_y(Alignment::Center)
-        )
-        .style(if self.active_tab == ActiveTab::PdfToImages {
-            button::primary
-        } else {
-            button::secondary
-        })
-        .on_press(Message::SwitchTab(ActiveTab::PdfToImages))
-        .padding(Padding::from([8, 16]));
-
-        let img_to_pdf_btn = button(
-            row![
-                text("🖼️"),
-                text("Gambar ke PDF").size(13).font(BOLD)
-            ]
-            .spacing(6)
-            .align_y(Alignment::Center)
-        )
-        .style(if self.active_tab == ActiveTab::ImagesToPdf {
-            button::primary
-        } else {
-            button::secondary
-        })
-        .on_press(Message::SwitchTab(ActiveTab::ImagesToPdf))
-        .padding(Padding::from([8, 16]));
-
-        let merge_btn = button(
-            row![
-                text("📑"),
-                text("Merge PDF").size(13).font(BOLD)
-            ]
-            .spacing(6)
-            .align_y(Alignment::Center)
-        )
-        .style(if self.active_tab == ActiveTab::Merge {
-            button::primary
-        } else {
-            button::secondary
-        })
-        .on_press(Message::SwitchTab(ActiveTab::Merge))
-        .padding(Padding::from([8, 16]));
-
-        let split_btn = button(
-            row![
-                text("✂️"),
-                text("Split PDF").size(13).font(BOLD)
-            ]
-            .spacing(6)
-            .align_y(Alignment::Center)
-        )
-        .style(if self.active_tab == ActiveTab::Split {
-            button::primary
-        } else {
-            button::secondary
-        })
-        .on_press(Message::SwitchTab(ActiveTab::Split))
-        .padding(Padding::from([8, 16]));
-
-        let compress_btn = button(
-            row![
-                text("🗜️"),
-                text("Compress PDF").size(13).font(BOLD)
-            ]
-            .spacing(6)
-            .align_y(Alignment::Center)
-        )
-        .style(if self.active_tab == ActiveTab::Compress {
-            button::primary
-        } else {
-            button::secondary
-        })
-        .on_press(Message::SwitchTab(ActiveTab::Compress))
-        .padding(Padding::from([8, 16]));
-
-        let tabs_row = row![
-            view_btn,
-            pdf_to_img_btn,
-            img_to_pdf_btn,
-            merge_btn,
-            split_btn,
-            compress_btn
-        ]
-        .spacing(10)
-        .align_y(Alignment::Center);
-
-        container(tabs_row)
+    fn view_menu_dropdown(&self) -> Element<'_, Message> {
+        let menu_item = |label: &'static str, tab: ActiveTab, current: ActiveTab| {
+            let is_current = tab == current;
+            button(
+                row![
+                    text(label).size(13).font(if is_current { BOLD } else { Font::DEFAULT }),
+                    Space::new().width(Length::Fill),
+                    if is_current { text("●").size(10).style(text::primary) } else { text("") }
+                ]
+                .align_y(Alignment::Center)
+            )
+            .style(if is_current { button::primary } else { button::secondary })
             .width(Length::Fill)
-            .padding(Padding::from([0, 20]))
+            .padding(Padding::from([10, 14]))
+            .on_press(Message::SwitchTab(tab))
+        };
+
+        let menu_content = column![
+            row![
+                text("ALAT & UTILITAS").size(11).font(BOLD).style(text::secondary),
+                Space::new().width(Length::Fill),
+                button(text("✕").size(11))
+                    .style(button::text)
+                    .on_press(Message::CloseMenu)
+            ]
+            .align_y(Alignment::Center),
+            rule::horizontal(1),
+            menu_item("👁️ View PDF (Reader)", ActiveTab::View, self.active_tab),
+            menu_item("📷 PDF ke Gambar", ActiveTab::PdfToImages, self.active_tab),
+            menu_item("🖼️ Gambar ke PDF", ActiveTab::ImagesToPdf, self.active_tab),
+            menu_item("🔀 Gabungkan PDF (Merge)", ActiveTab::Merge, self.active_tab),
+            menu_item("✂️ Pisahkan PDF (Split)", ActiveTab::Split, self.active_tab),
+            menu_item("🗜️ Kompres Dokumen PDF", ActiveTab::Compress, self.active_tab),
+        ]
+        .spacing(8)
+        .width(260);
+
+        container(menu_content)
+            .padding(Padding::from([12, 14]))
+            .style(container::rounded_box)
             .into()
     }
 
@@ -1241,152 +1342,7 @@ impl App {
 
     // --- VIEWER TAB VIEW (PDF READER) ---
     fn view_viewer_tab(&self) -> Element<'_, Message> {
-        let is_processing = matches!(self.status, OperationStatus::Processing(_));
-
-        let open_btn = button(
-            row![
-                text("📂"),
-                text("Buka PDF").size(13)
-            ]
-            .spacing(6)
-            .align_y(Alignment::Center)
-        )
-        .style(button::primary)
-        .padding(Padding::from([7, 14]));
-
-        let open_btn = if is_processing {
-            open_btn
-        } else {
-            open_btn.on_press(Message::PickViewerFile)
-        };
-
-        let prev_btn = button(text("◀ Prev").size(12))
-            .style(button::secondary)
-            .padding(Padding::from([6, 12]));
-        let prev_btn = if self.viewer_file.is_some() && self.viewer_current_page > 1 && !is_processing {
-            prev_btn.on_press(Message::ViewerPrevPage)
-        } else {
-            prev_btn
-        };
-
-        let next_btn = button(text("Next ▶").size(12))
-            .style(button::secondary)
-            .padding(Padding::from([6, 12]));
-        let next_btn = if self.viewer_file.is_some() && self.viewer_current_page < self.viewer_total_pages && !is_processing {
-            next_btn.on_press(Message::ViewerNextPage)
-        } else {
-            next_btn
-        };
-
-        let zoom_in_btn = button(text("🔍 +").size(12))
-            .style(button::secondary)
-            .padding(Padding::from([6, 10]));
-        let zoom_in_btn = if self.viewer_file.is_some() && !is_processing {
-            zoom_in_btn.on_press(Message::ViewerZoomIn)
-        } else {
-            zoom_in_btn
-        };
-
-        let zoom_out_btn = button(text("🔍 -").size(12))
-            .style(button::secondary)
-            .padding(Padding::from([6, 10]));
-        let zoom_out_btn = if self.viewer_file.is_some() && !is_processing {
-            zoom_out_btn.on_press(Message::ViewerZoomOut)
-        } else {
-            zoom_out_btn
-        };
-
-        let zoom_reset_btn = button(text(format!("{:.0}%", self.viewer_scale * 100.0)).size(12))
-            .style(button::secondary)
-            .padding(Padding::from([6, 10]));
-        let zoom_reset_btn = if self.viewer_file.is_some() && !is_processing {
-            zoom_reset_btn.on_press(Message::ViewerZoomReset)
-        } else {
-            zoom_reset_btn
-        };
-
-        let export_png_btn = button(
-            row![
-                text("💾"),
-                text("PNG").size(12).font(BOLD)
-            ]
-            .spacing(4)
-            .align_y(Alignment::Center)
-        )
-        .style(button::secondary)
-        .padding(Padding::from([6, 10]));
-        let export_png_btn = if self.viewer_file.is_some() && !is_processing {
-            export_png_btn.on_press(Message::ViewerExportPagePng)
-        } else {
-            export_png_btn
-        };
-
-        let export_jpg_btn = button(
-            row![
-                text("💾"),
-                text("JPG").size(12).font(BOLD)
-            ]
-            .spacing(4)
-            .align_y(Alignment::Center)
-        )
-        .style(button::secondary)
-        .padding(Padding::from([6, 10]));
-        let export_jpg_btn = if self.viewer_file.is_some() && !is_processing {
-            export_jpg_btn.on_press(Message::ViewerExportPageJpg)
-        } else {
-            export_jpg_btn
-        };
-
-        let export_all_btn = button(
-            row![
-                text("📁"),
-                text("Semua Halaman").size(12).font(BOLD)
-            ]
-            .spacing(4)
-            .align_y(Alignment::Center)
-        )
-        .style(button::secondary)
-        .padding(Padding::from([6, 10]));
-        let export_all_btn = if self.viewer_file.is_some() && !is_processing {
-            export_all_btn.on_press(Message::ViewerExportAll)
-        } else {
-            export_all_btn
-        };
-
-        let page_indicator = if self.viewer_total_pages > 0 {
-            format!("Halaman {} / {}", self.viewer_current_page, self.viewer_total_pages)
-        } else {
-            "Tidak ada file".to_string()
-        };
-
-        let file_name_text = self.viewer_file.as_ref()
-            .and_then(|p| p.file_name())
-            .map(|n| n.to_string_lossy().to_string())
-            .unwrap_or_else(|| "Belum ada dokumen yang dibuka".to_string());
-
-        let viewer_toolbar = row![
-            open_btn,
-            Space::new().width(10),
-            text(file_name_text).size(13).font(BOLD),
-            Space::new().width(Length::Fill),
-            prev_btn,
-            container(text(page_indicator).size(12).font(BOLD))
-                .padding(Padding::from([4, 10]))
-                .style(container::rounded_box),
-            next_btn,
-            Space::new().width(12),
-            zoom_out_btn,
-            zoom_reset_btn,
-            zoom_in_btn,
-            Space::new().width(12),
-            export_png_btn,
-            export_jpg_btn,
-            export_all_btn
-        ]
-        .spacing(8)
-        .align_y(Alignment::Center);
-
-        let canvas_view: Element<'_, Message> = if let Some(ref handle) = self.viewer_image_handle {
+        if let Some(ref handle) = self.viewer_image_handle {
             let page_img = image(handle.clone());
             let paper_container = container(page_img)
                 .padding(Padding::from(10))
@@ -1431,15 +1387,7 @@ impl App {
             .center_y(Length::Fill)
             .style(container::rounded_box)
             .into()
-        };
-
-        column![
-            viewer_toolbar,
-            rule::horizontal(1),
-            canvas_view
-        ]
-        .spacing(12)
-        .into()
+        }
     }
 
     // --- PDF TO IMAGES TAB VIEW ---

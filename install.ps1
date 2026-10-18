@@ -146,6 +146,7 @@ try {
     $Shortcut.TargetPath = $ExePath
     $Shortcut.WorkingDirectory = $InstallDir
     $Shortcut.Description = "pd - Ultra-Lightweight PDF Reader & Utility"
+    $Shortcut.IconLocation = $ExePath + ",0"
     $Shortcut.Save()
     Write-SuccessMsg "Pintasan Start Menu berhasil dibuat: $ShortcutPath"
 } catch {

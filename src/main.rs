@@ -1,3 +1,5 @@
+#![windows_subsystem = "windows"]
+
 mod app;
 mod pdf_ops;
 
@@ -114,11 +116,30 @@ fn main() -> iced::Result {
         }
     }
 
+    let icon = {
+        let png_bytes = include_bytes!("../assets/pd.png");
+        if let Ok(img) = image::load_from_memory(png_bytes) {
+            let rgba = img.to_rgba8();
+            let (width, height) = rgba.dimensions();
+            iced::window::icon::from_rgba(rgba.into_raw(), width, height).ok()
+        } else {
+            None
+        }
+    };
+
+    let mut window = iced::window::Settings {
+        size: [880.0, 700.0].into(),
+        position: iced::window::Position::Centered,
+        ..Default::default()
+    };
+    if let Some(ic) = icon {
+        window.icon = Some(ic);
+    }
+
     iced::application(App::boot, App::update, App::view)
         .title("pd")
         .theme(App::theme)
-        .window_size([880.0, 700.0])
-        .centered()
+        .window(window)
         .run()
 }
 
