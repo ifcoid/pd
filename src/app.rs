@@ -46,10 +46,12 @@ pub struct App {
     pub viewer_total_pages: usize,
     pub viewer_scale: f32,
     pub viewer_image_handle: Option<image::Handle>,
+    pub viewer_current_data: Option<PageViewData>,
     pub viewer_scroll_relative_y: f32,
     pub viewer_content_taller: bool,
     pub viewer_last_scroll_nav: Option<Instant>,
     pub sidebar_open: bool,
+    pub context_menu_open: bool,
 
     // PDF to Images Tab State
     pub pdf_to_img_file: Option<PathBuf>,
@@ -100,6 +102,10 @@ pub enum Message {
     ViewerExportAll,
     ViewerExportCompleted(Result<PathBuf, String>),
     ViewerExportAllCompleted(Result<usize, String>),
+    ViewerCopyPageToClipboard,
+    ViewerExportPagePdf,
+    ViewerExportPdfCompleted(Result<PathBuf, String>),
+    CloseContextMenu,
     ViewerScrolled {
         relative_y: f32,
         content_taller: bool,
@@ -187,6 +193,8 @@ impl App {
             compress_report: None,
             menu_open: false,
             sidebar_open: false,
+            viewer_current_data: None,
+            context_menu_open: false,
         }
     }
 
@@ -379,6 +387,9 @@ impl App {
                             }
                         }
                     }
+                    Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Right)) => {
+                        self.context_menu_open = !self.context_menu_open;
+                    }
                     Event::Keyboard(keyboard::Event::KeyPressed { key, .. }) => {
                         match key {
                             keyboard::Key::Named(keyboard::key::Named::PageDown) => {
@@ -495,13 +506,103 @@ impl App {
                         let handle = image::Handle::from_rgba(
                             page_data.width,
                             page_data.height,
-                            page_data.rgba_bytes,
+                            page_data.rgba_bytes.clone(),
                         );
                         self.viewer_image_handle = Some(handle);
+                        self.viewer_current_data = Some(page_data);
                         self.status = OperationStatus::Idle;
                     }
                     Err(e) => {
                         self.status = OperationStatus::Error(format!("Gagal membaca PDF: {}", e));
+                    }
+                }
+                Task::none()
+            }
+            Message::CloseContextMenu => {
+                self.context_menu_open = false;
+                Task::none()
+            }
+            Message::ViewerCopyPageToClipboard => {
+                self.context_menu_open = false;
+                if let Some(ref data) = self.viewer_current_data {
+                    match arboard::Clipboard::new() {
+                        Ok(mut cb) => {
+                            let img = arboard::ImageData {
+                                width: data.width as usize,
+                                height: data.height as usize,
+                                bytes: std::borrow::Cow::Borrowed(&data.rgba_bytes),
+                            };
+                            match cb.set_image(img) {
+                                Ok(_) => {
+                                    self.status = OperationStatus::Success(format!(
+                                        "Halaman {} berhasil disalin ke clipboard! Siap dipaste (Ctrl+V) ke WA/Word.",
+                                        self.viewer_current_page
+                                    ));
+                                }
+                                Err(e) => {
+                                    self.status = OperationStatus::Error(format!("Gagal menyalin gambar ke clipboard: {}", e));
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            self.status = OperationStatus::Error(format!("Gagal membuka clipboard: {}", e));
+                        }
+                    }
+                } else {
+                    self.status = OperationStatus::Error("Tidak ada halaman aktif untuk disalin.".to_string());
+                }
+                Task::none()
+            }
+            Message::ViewerExportPagePdf => {
+                self.context_menu_open = false;
+                let file = match &self.viewer_file {
+                    Some(f) => f.clone(),
+                    None => {
+                        self.status = OperationStatus::Error("Tidak ada file PDF yang sedang dibuka.".to_string());
+                        return Task::none();
+                    }
+                };
+
+                let page = self.viewer_current_page as u32;
+                let stem = file.file_stem().and_then(|s| s.to_str()).unwrap_or("dokumen");
+                let default_name = format!("{}_halaman_{}.pdf", stem, page);
+
+                self.status = OperationStatus::Processing(format!("Mengekstrak halaman {} sebagai file PDF baru...", page));
+
+                Task::future(async move {
+                    let dest = rfd::AsyncFileDialog::new()
+                        .add_filter("PDF files (*.pdf)", &["pdf"])
+                        .set_file_name(&default_name)
+                        .set_title("Simpan Halaman ini sebagai File PDF Baru")
+                        .save_file()
+                        .await;
+
+                    if let Some(handle) = dest {
+                        let path = handle.path().to_path_buf();
+                        match extract_pages_to_file(&file, &[page], &path) {
+                            Ok(_) => Message::ViewerExportPdfCompleted(Ok(path)),
+                            Err(e) => Message::ViewerExportPdfCompleted(Err(e.to_string())),
+                        }
+                    } else {
+                        Message::ViewerExportPdfCompleted(Err("Penyimpanan PDF dibatalkan oleh pengguna.".to_string()))
+                    }
+                })
+            }
+            Message::ViewerExportPdfCompleted(res) => {
+                match res {
+                    Ok(path) => {
+                        let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("file");
+                        self.status = OperationStatus::Success(format!(
+                            "Halaman PDF berhasil disimpan sebagai file baru: {}",
+                            name
+                        ));
+                    }
+                    Err(msg) => {
+                        if msg.contains("dibatalkan") {
+                            self.status = OperationStatus::Idle;
+                        } else {
+                            self.status = OperationStatus::Error(format!("Gagal: {}", msg));
+                        }
                     }
                 }
                 Task::none()
@@ -1333,16 +1434,6 @@ impl App {
                 .padding(Padding::from([4, 8]));
             let zoom_in = if self.viewer_file.is_some() && !is_processing { zoom_in.on_press(Message::ViewerZoomIn) } else { zoom_in };
 
-            let png_btn = button(text("PNG").size(11).font(BOLD))
-                .style(button::secondary)
-                .padding(Padding::from([4, 8]));
-            let png_btn = if self.viewer_file.is_some() && !is_processing { png_btn.on_press(Message::ViewerExportPagePng) } else { png_btn };
-
-            let jpg_btn = button(text("JPG").size(11).font(BOLD))
-                .style(button::secondary)
-                .padding(Padding::from([4, 8]));
-            let jpg_btn = if self.viewer_file.is_some() && !is_processing { jpg_btn.on_press(Message::ViewerExportPageJpg) } else { jpg_btn };
-
             let top_row = row![
                 logo_badge,
                 sidebar_btn,
@@ -1353,8 +1444,6 @@ impl App {
                 text("│").size(12).style(text::secondary),
                 row![prev_btn, page_pill, next_btn].spacing(3).align_y(Alignment::Center),
                 Space::new().width(Length::Fill),
-                row![png_btn, jpg_btn].spacing(4).align_y(Alignment::Center),
-                Space::new().width(4),
                 menu_btn
             ]
             .spacing(6)
@@ -1440,20 +1529,26 @@ impl App {
         .width(260);
 
         if self.viewer_file.is_some() {
-            menu_content = menu_content.push(rule::horizontal(1)).push(
+            let action_btn = |icon: &'static str, label: &'static str, msg: Message| {
                 button(
-                    row![
-                        text("📁").size(13),
-                        text("Ekspor Semua Halaman").size(12).font(BOLD)
-                    ]
-                    .spacing(6)
-                    .align_y(Alignment::Center)
+                    row![text(icon).size(13), text(label).size(11).font(BOLD)]
+                        .spacing(6)
+                        .align_y(Alignment::Center)
                 )
                 .style(button::secondary)
                 .width(Length::Fill)
-                .padding(Padding::from([8, 12]))
-                .on_press(Message::ViewerExportAll)
-            );
+                .padding(Padding::from([6, 10]))
+                .on_press(msg)
+            };
+
+            menu_content = menu_content
+                .push(rule::horizontal(1))
+                .push(text(format!("AKSI HALAMAN {}", self.viewer_current_page)).size(10).font(BOLD).style(text::secondary))
+                .push(action_btn("📋", "Salin Gambar ke Clipboard", Message::ViewerCopyPageToClipboard))
+                .push(action_btn("🖼️", "Simpan Gambar (PNG)...", Message::ViewerExportPagePng))
+                .push(action_btn("📷", "Simpan Gambar (JPG)...", Message::ViewerExportPageJpg))
+                .push(action_btn("📄", "Simpan Halaman sebagai PDF...", Message::ViewerExportPagePdf))
+                .push(action_btn("📁", "Ekspor Semua Halaman...", Message::ViewerExportAll));
         }
 
         container(menu_content)
@@ -1535,7 +1630,7 @@ impl App {
                 .padding(Padding::from(10))
                 .style(container::rounded_box);
 
-            scrollable(
+            let main_scroll = scrollable(
                 container(paper_container)
                     .width(Length::Fill)
                     .center_x(Length::Fill)
@@ -1545,8 +1640,60 @@ impl App {
             .on_scroll(|vp| Message::ViewerScrolled {
                 relative_y: vp.relative_offset().y,
                 content_taller: vp.content_bounds().height > vp.bounds().height,
-            })
-            .into()
+            });
+
+            if self.context_menu_open {
+                let action_btn = |icon: &'static str, title: &'static str, desc: &'static str, msg: Message| {
+                    button(
+                        row![
+                            text(icon).size(16),
+                            column![
+                                text(title).size(12).font(BOLD),
+                                text(desc).size(10).style(text::secondary)
+                            ]
+                            .spacing(2)
+                        ]
+                        .spacing(10)
+                        .align_y(Alignment::Center)
+                    )
+                    .style(button::secondary)
+                    .width(Length::Fill)
+                    .padding(Padding::from([8, 12]))
+                    .on_press(msg)
+                };
+
+                let menu_card = container(
+                    column![
+                        row![
+                            text(format!("Aksi Halaman {}", self.viewer_current_page)).size(12).font(BOLD).style(text::primary),
+                            Space::new().width(Length::Fill),
+                            button(text("✕").size(11))
+                                .style(button::text)
+                                .on_press(Message::CloseContextMenu)
+                        ]
+                        .align_y(Alignment::Center),
+                        rule::horizontal(1),
+                        action_btn("📋", "Salin Gambar ke Clipboard", "Paste langsung (Ctrl+V) ke WA/Word", Message::ViewerCopyPageToClipboard),
+                        action_btn("🖼️", "Simpan Gambar (PNG)...", "Ekspor gambar lossless jernih", Message::ViewerExportPagePng),
+                        action_btn("📷", "Simpan Gambar (JPG)...", "Ekspor gambar foto hemat ukuran", Message::ViewerExportPageJpg),
+                        action_btn("📄", "Simpan Halaman sebagai PDF...", "Ekstrak halaman ini ke file PDF baru", Message::ViewerExportPagePdf),
+                    ]
+                    .spacing(6)
+                    .width(280)
+                )
+                .padding(Padding::from([10, 14]))
+                .style(container::rounded_box);
+
+                row![
+                    container(main_scroll).width(Length::Fill).height(Length::Fill),
+                    container(menu_card).padding(Padding::from([12, 16])).align_y(Alignment::Start)
+                ]
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .into()
+            } else {
+                main_scroll.into()
+            }
         } else {
             container(
                 column![
