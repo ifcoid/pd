@@ -1,10 +1,4 @@
-<#
-.SYNOPSIS
-    Installer script for PD - Desktop PDF Utility on Windows.
-.DESCRIPTION
-    Downloads and installs the latest binary release of PD from GitHub,
-    configures user PATH, and optionally creates a Start Menu shortcut.
-#>
+# Installer script for PD - Desktop PDF Utility on Windows
 
 [CmdletBinding()]
 param (
@@ -14,31 +8,33 @@ param (
 
 $ErrorActionPreference = 'Stop'
 
-function Write-Step ($message) {
+function Write-Step {
+    param([string]$Message)
     Write-Host "[PD] " -ForegroundColor Cyan -NoNewline
-    Write-Host $message
+    Write-Host $Message
 }
 
-function Write-Success ($message) {
-    Write-Host "[✓] " -ForegroundColor Green -NoNewline
-    Write-Host $message -ForegroundColor Green
+function Write-SuccessMsg {
+    param([string]$Message)
+    Write-Host "[OK] " -ForegroundColor Green -NoNewline
+    Write-Host $Message -ForegroundColor Green
 }
 
-function Write-WarningMsg ($message) {
-    Write-Host "[!] " -ForegroundColor Yellow -NoNewline
-    Write-Host $message -ForegroundColor Yellow
+function Write-WarningMsg {
+    param([string]$Message)
+    Write-Host "[WARN] " -ForegroundColor Yellow -NoNewline
+    Write-Host $Message -ForegroundColor Yellow
 }
 
-function Write-ErrorMsg ($message) {
-    Write-Host "[✗] " -ForegroundColor Red -NoNewline
-    Write-Host $message -ForegroundColor Red
+function Write-ErrorMsg {
+    param([string]$Message)
+    Write-Host "[ERR] " -ForegroundColor Red -NoNewline
+    Write-Host $Message -ForegroundColor Red
 }
 
-Write-Host @"
-=========================================================
-      PD - Desktop PDF Utility Installer for Windows
-=========================================================
-"@ -ForegroundColor Cyan
+Write-Host "=========================================================" -ForegroundColor Cyan
+Write-Host "      PD - Desktop PDF Utility Installer for Windows     " -ForegroundColor Cyan
+Write-Host "=========================================================" -ForegroundColor Cyan
 
 # 1. Check Architecture
 if ([Environment]::Is64BitOperatingSystem -ne $true) {
@@ -47,7 +43,7 @@ if ([Environment]::Is64BitOperatingSystem -ne $true) {
 }
 
 # 2. Prepare Install Directory
-if (!(Test-Path -Path $InstallDir)) {
+if (-not (Test-Path -Path $InstallDir)) {
     New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
 }
 
@@ -62,7 +58,8 @@ $DownloadUrl = $null
 $TagName = "latest"
 
 try {
-    $Headers = @{ "User-Agent" = "PowerShell-PD-Installer" }
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    $Headers = @{ "User-Agent" = "PD-Installer-PowerShell" }
     $Release = Invoke-RestMethod -Uri $ApiUrl -Headers $Headers -Method Get
     $TagName = $Release.tag_name
 
@@ -78,7 +75,7 @@ try {
 
 # 4. Download and Extract or Local Fallback
 if ($DownloadUrl) {
-    Write-Step "Mengunduh versi $TagName dari $DownloadUrl..."
+    Write-Step "Mengunduh versi $TagName ($DownloadUrl)..."
     Invoke-WebRequest -Uri $DownloadUrl -OutFile $ZipPath -UseBasicParsing
 
     Write-Step "Mengekstrak binary ke $InstallDir..."
@@ -87,7 +84,6 @@ if ($DownloadUrl) {
 } else {
     Write-WarningMsg "Asset rilis binary belum tersedia di GitHub Releases."
     
-    # Check if local cargo build exists
     $LocalTarget = ".\target\release\pd.exe"
     $LocalDebug = ".\target\debug\pd.exe"
     
@@ -109,7 +105,7 @@ if ($DownloadUrl) {
     }
 }
 
-if (!(Test-Path $ExePath)) {
+if (-not (Test-Path $ExePath)) {
     Write-ErrorMsg "File binary pd.exe tidak ditemukan di $InstallDir."
     exit 1
 }
@@ -121,7 +117,7 @@ if ($UserPath -notlike "*$InstallDir*") {
     $NewPath = "$UserPath;$InstallDir"
     [Environment]::SetEnvironmentVariable("Path", $NewPath, [EnvironmentVariableTarget]::User)
     $env:Path = "$env:Path;$InstallDir"
-    Write-Success "User PATH berhasil diperbarui."
+    Write-SuccessMsg "User PATH berhasil diperbarui."
 } else {
     Write-Step "InstallDir sudah terdaftar di PATH."
 }
@@ -138,12 +134,12 @@ try {
     $Shortcut.WorkingDirectory = $InstallDir
     $Shortcut.Description = "PD - Desktop PDF Utility"
     $Shortcut.Save()
-    Write-Success "Pintasan Start Menu berhasil dibuat: $ShortcutPath"
+    Write-SuccessMsg "Pintasan Start Menu berhasil dibuat: $ShortcutPath"
 } catch {
     Write-WarningMsg "Tidak dapat membuat pintasan Start Menu: $($_.Exception.Message)"
 }
 
 Write-Host ""
-Write-Success "Instalasi selesai! PD - Desktop PDF Utility siap digunakan."
+Write-SuccessMsg "Instalasi selesai! PD - Desktop PDF Utility siap digunakan."
 Write-Host "Anda dapat menjalankan aplikasi dengan mengetik 'pd' di terminal atau melalui Start Menu." -ForegroundColor Gray
 Write-Host ""
