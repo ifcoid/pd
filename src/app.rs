@@ -1,5 +1,5 @@
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
-use std::time::Instant;
 use iced::event::{self, Event};
 use iced::widget::{
     button, column, container, image, mouse_area, progress_bar, row, rule, scrollable, text, text_input, Space,
@@ -41,16 +41,18 @@ pub struct App {
     pub active_tab: ActiveTab,
     pub status: OperationStatus,
 
-    // Viewer Tab State (Ultra-Lightweight Pure-Rust Reader)
+    // Viewer Tab State (Continuous Vertical Scroll Pure-Rust Reader)
     pub viewer_file: Option<PathBuf>,
     pub viewer_current_page: usize,
     pub viewer_total_pages: usize,
     pub viewer_scale: f32,
     pub viewer_image_handle: Option<image::Handle>,
     pub viewer_current_data: Option<PageViewData>,
+    pub viewer_pages: HashMap<usize, (image::Handle, PageViewData)>,
+    pub viewer_page_dims: (u32, u32),
+    pub viewer_loading_pages: HashSet<usize>,
     pub viewer_scroll_relative_y: f32,
     pub viewer_content_taller: bool,
-    pub viewer_last_scroll_nav: Option<Instant>,
     pub sidebar_open: bool,
     pub context_menu_open: bool,
 
@@ -176,9 +178,11 @@ impl App {
             viewer_total_pages: 0,
             viewer_scale: 1.25,
             viewer_image_handle: None,
+            viewer_pages: HashMap::new(),
+            viewer_page_dims: (0, 0),
+            viewer_loading_pages: HashSet::new(),
             viewer_scroll_relative_y: 0.0,
             viewer_content_taller: false,
-            viewer_last_scroll_nav: None,
             pdf_to_img_file: None,
             pdf_to_img_total_pages: 0,
             pdf_to_img_range: String::new(),
@@ -268,14 +272,7 @@ impl App {
                     app.viewer_file = Some(first_path.clone());
                     app.viewer_total_pages = total;
                     app.viewer_current_page = 1;
-                    let scale = app.viewer_scale;
-                    app.status = OperationStatus::Processing("Membuka dokumen PDF...".to_string());
-                    let task = Task::future(async move {
-                        match render_page_to_rgba(&first_path, 1, scale) {
-                            Ok(data) => Message::ViewerPageRendered(Ok(data)),
-                            Err(e) => Message::ViewerPageRendered(Err(e.to_string())),
-                        }
-                    });
+                    let task = app.ensure_pages_rendered();
                     return (app, task);
                 }
             } else {
@@ -321,16 +318,13 @@ impl App {
         }
     }
 
-    fn render_current_viewer_page(&mut self) -> Task<Message> {
+    fn spawn_render_page(&self, page: usize) -> Task<Message> {
         let file = match &self.viewer_file {
             Some(f) => f.clone(),
             None => return Task::none(),
         };
 
-        let page = self.viewer_current_page;
         let scale = self.viewer_scale;
-        self.status = OperationStatus::Processing(format!("Me-render halaman {}...", page));
-
         Task::future(async move {
             match render_page_to_rgba(&file, page, scale) {
                 Ok(data) => Message::ViewerPageRendered(Ok(data)),
@@ -339,11 +333,52 @@ impl App {
         })
     }
 
+    fn ensure_pages_rendered(&mut self) -> Task<Message> {
+        let curr = self.viewer_current_page;
+        let total = self.viewer_total_pages;
+        if total == 0 || self.viewer_file.is_none() {
+            return Task::none();
+        }
+
+        let start_p = curr.saturating_sub(1).max(1);
+        let end_p = (curr + 2).min(total);
+
+        let mut tasks = Vec::new();
+        for p in start_p..=end_p {
+            if !self.viewer_pages.contains_key(&p) && !self.viewer_loading_pages.contains(&p) {
+                self.viewer_loading_pages.insert(p);
+                tasks.push(self.spawn_render_page(p));
+            }
+        }
+
+        if self.viewer_pages.len() > 35 {
+            self.viewer_pages.retain(|&p, _| (p as isize - curr as isize).abs() <= 12);
+        }
+
+        if tasks.is_empty() {
+            Task::none()
+        } else {
+            Task::batch(tasks)
+        }
+    }
+
     pub fn update(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::ViewerScrolled { relative_y, content_taller } => {
                 self.viewer_scroll_relative_y = relative_y;
                 self.viewer_content_taller = content_taller;
+                if self.viewer_total_pages > 0 {
+                    let approx_page = (((relative_y * (self.viewer_total_pages as f32)).floor() as usize) + 1)
+                        .clamp(1, self.viewer_total_pages);
+                    if approx_page != self.viewer_current_page {
+                        self.viewer_current_page = approx_page;
+                        if let Some((handle, data)) = self.viewer_pages.get(&approx_page) {
+                            self.viewer_image_handle = Some(handle.clone());
+                            self.viewer_current_data = Some(data.clone());
+                        }
+                        return self.ensure_pages_rendered();
+                    }
+                }
                 Task::none()
             }
             Message::EventOccurred(event) => {
@@ -355,73 +390,26 @@ impl App {
                     Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Right)) => {
                         self.context_menu_open = !self.context_menu_open;
                     }
-                    Event::Mouse(mouse::Event::WheelScrolled { delta }) => {
-                        let is_processing = matches!(self.status, OperationStatus::Processing(_));
-                        if is_processing {
-                            return Task::none();
-                        }
-
-                        let y = match delta {
-                            mouse::ScrollDelta::Lines { y, .. } => y,
-                            mouse::ScrollDelta::Pixels { y, .. } => y,
-                        };
-
-                        let now = Instant::now();
-                        let can_nav = self.viewer_last_scroll_nav
-                            .map(|t| now.duration_since(t).as_millis() > 300)
-                            .unwrap_or(true);
-
-                        if can_nav {
-                            if y < -0.1 {
-                                // Scrolling down
-                                // If page fits in viewport OR already scrolled to the bottom (>= 0.92)
-                                if !self.viewer_content_taller || self.viewer_scroll_relative_y >= 0.92 {
-                                    if self.viewer_current_page < self.viewer_total_pages {
-                                        self.viewer_last_scroll_nav = Some(now);
-                                        self.viewer_current_page += 1;
-                                        self.viewer_scroll_relative_y = 0.0;
-                                        return Task::batch(vec![
-                                            self.render_current_viewer_page(),
-                                            iced::widget::operation::snap_to(
-                                                "viewer_scroll",
-                                                iced::widget::operation::RelativeOffset::START,
-                                            ),
-                                        ]);
-                                    }
-                                }
-                            } else if y > 0.1 {
-                                // Scrolling up
-                                // If page fits in viewport OR already scrolled to the top (<= 0.08)
-                                if !self.viewer_content_taller || self.viewer_scroll_relative_y <= 0.08 {
-                                    if self.viewer_current_page > 1 {
-                                        self.viewer_last_scroll_nav = Some(now);
-                                        self.viewer_current_page -= 1;
-                                        self.viewer_scroll_relative_y = 1.0;
-                                        return Task::batch(vec![
-                                            self.render_current_viewer_page(),
-                                            iced::widget::operation::snap_to_end("viewer_scroll"),
-                                        ]);
-                                    }
-                                }
-                            }
-                        }
-                    }
                     Event::Keyboard(keyboard::Event::KeyPressed { key, .. }) => {
                         match key {
-                            keyboard::Key::Named(keyboard::key::Named::PageDown)
-                            | keyboard::Key::Named(keyboard::key::Named::ArrowDown) => {
-                                let is_processing = matches!(self.status, OperationStatus::Processing(_));
-                                if !is_processing && self.viewer_current_page < self.viewer_total_pages {
-                                    self.viewer_current_page += 1;
-                                    return self.render_current_viewer_page();
+                            keyboard::Key::Named(keyboard::key::Named::PageDown) => {
+                                if self.viewer_total_pages > 0 {
+                                    let step = 1.0 / self.viewer_total_pages.max(1) as f32;
+                                    let new_y = (self.viewer_scroll_relative_y + step).min(1.0);
+                                    return iced::widget::operation::snap_to(
+                                        "viewer_scroll",
+                                        iced::widget::operation::RelativeOffset { y: Some(new_y), x: None },
+                                    );
                                 }
                             }
-                            keyboard::Key::Named(keyboard::key::Named::PageUp)
-                            | keyboard::Key::Named(keyboard::key::Named::ArrowUp) => {
-                                let is_processing = matches!(self.status, OperationStatus::Processing(_));
-                                if !is_processing && self.viewer_current_page > 1 {
-                                    self.viewer_current_page -= 1;
-                                    return self.render_current_viewer_page();
+                            keyboard::Key::Named(keyboard::key::Named::PageUp) => {
+                                if self.viewer_total_pages > 0 {
+                                    let step = 1.0 / self.viewer_total_pages.max(1) as f32;
+                                    let new_y = (self.viewer_scroll_relative_y - step).max(0.0);
+                                    return iced::widget::operation::snap_to(
+                                        "viewer_scroll",
+                                        iced::widget::operation::RelativeOffset { y: Some(new_y), x: None },
+                                    );
                                 }
                             }
                             keyboard::Key::Named(keyboard::key::Named::Escape) => {
@@ -476,23 +464,41 @@ impl App {
             }
             Message::ViewerFileSelected(file_opt) => {
                 if let Some(file) = file_opt {
-                    self.viewer_file = Some(file);
-                    self.viewer_current_page = 1;
-                    return self.render_current_viewer_page();
+                    if let Ok(total) = get_pdf_page_count(&file) {
+                        self.viewer_file = Some(file);
+                        self.viewer_total_pages = total;
+                        self.viewer_current_page = 1;
+                        self.viewer_pages.clear();
+                        self.viewer_loading_pages.clear();
+                        self.viewer_page_dims = (0, 0);
+                        return self.ensure_pages_rendered();
+                    }
                 }
                 Task::none()
             }
             Message::ViewerNextPage => {
                 if self.viewer_current_page < self.viewer_total_pages {
                     self.viewer_current_page += 1;
-                    return self.render_current_viewer_page();
+                    let target_ratio = (self.viewer_current_page - 1) as f32 / self.viewer_total_pages.max(1) as f32;
+                    let snap_task = iced::widget::operation::snap_to(
+                        "viewer_scroll",
+                        iced::widget::operation::RelativeOffset { y: Some(target_ratio), x: None },
+                    );
+                    let render_task = self.ensure_pages_rendered();
+                    return Task::batch(vec![snap_task, render_task]);
                 }
                 Task::none()
             }
             Message::ViewerPrevPage => {
                 if self.viewer_current_page > 1 {
                     self.viewer_current_page -= 1;
-                    return self.render_current_viewer_page();
+                    let target_ratio = (self.viewer_current_page - 1) as f32 / self.viewer_total_pages.max(1) as f32;
+                    let snap_task = iced::widget::operation::snap_to(
+                        "viewer_scroll",
+                        iced::widget::operation::RelativeOffset { y: Some(target_ratio), x: None },
+                    );
+                    let render_task = self.ensure_pages_rendered();
+                    return Task::batch(vec![snap_task, render_task]);
                 }
                 Task::none()
             }
@@ -500,45 +506,66 @@ impl App {
                 if self.viewer_file.is_some()
                     && page >= 1
                     && page <= self.viewer_total_pages
-                    && page != self.viewer_current_page
                 {
                     self.viewer_current_page = page;
-                    return self.render_current_viewer_page();
+                    let target_ratio = (page - 1) as f32 / self.viewer_total_pages.max(1) as f32;
+                    let snap_task = iced::widget::operation::snap_to(
+                        "viewer_scroll",
+                        iced::widget::operation::RelativeOffset { y: Some(target_ratio), x: None },
+                    );
+                    let render_task = self.ensure_pages_rendered();
+                    return Task::batch(vec![snap_task, render_task]);
                 }
                 Task::none()
             }
             Message::ViewerZoomIn => {
                 if self.viewer_scale < 3.0 {
                     self.viewer_scale = (self.viewer_scale + 0.25).min(3.0);
-                    return self.render_current_viewer_page();
+                    self.viewer_pages.clear();
+                    self.viewer_loading_pages.clear();
+                    self.viewer_page_dims = (0, 0);
+                    return self.ensure_pages_rendered();
                 }
                 Task::none()
             }
             Message::ViewerZoomOut => {
                 if self.viewer_scale > 0.5 {
                     self.viewer_scale = (self.viewer_scale - 0.25).max(0.5);
-                    return self.render_current_viewer_page();
+                    self.viewer_pages.clear();
+                    self.viewer_loading_pages.clear();
+                    self.viewer_page_dims = (0, 0);
+                    return self.ensure_pages_rendered();
                 }
                 Task::none()
             }
             Message::ViewerZoomReset => {
                 self.viewer_scale = 1.25;
-                self.render_current_viewer_page()
+                self.viewer_pages.clear();
+                self.viewer_loading_pages.clear();
+                self.viewer_page_dims = (0, 0);
+                return self.ensure_pages_rendered();
             }
             Message::ViewerPageRendered(res) => {
                 match res {
                     Ok(page_data) => {
-                        self.viewer_current_page = page_data.page_number;
-                        self.viewer_total_pages = page_data.total_pages;
-
+                        let p = page_data.page_number;
+                        self.viewer_loading_pages.remove(&p);
+                        if self.viewer_page_dims.0 == 0 {
+                            self.viewer_page_dims = (page_data.width, page_data.height);
+                        }
                         let handle = image::Handle::from_rgba(
                             page_data.width,
                             page_data.height,
                             page_data.rgba_bytes.clone(),
                         );
-                        self.viewer_image_handle = Some(handle);
-                        self.viewer_current_data = Some(page_data);
-                        self.status = OperationStatus::Idle;
+                        if p == self.viewer_current_page {
+                            self.viewer_current_data = Some(page_data.clone());
+                            self.viewer_image_handle = Some(handle.clone());
+                        }
+                        self.viewer_pages.insert(p, (handle, page_data));
+                        if self.viewer_loading_pages.is_empty() {
+                            self.status = OperationStatus::Idle;
+                        }
                     }
                     Err(e) => {
                         self.status = OperationStatus::Error(format!("Gagal membaca PDF: {}", e));
@@ -548,7 +575,11 @@ impl App {
             }
             Message::ViewerCopyPageToClipboard => {
                 self.context_menu_open = false;
-                if let Some(ref data) = self.viewer_current_data {
+                let data_opt = self.viewer_pages.get(&self.viewer_current_page)
+                    .map(|(_, d)| d.clone())
+                    .or_else(|| self.viewer_current_data.clone());
+
+                if let Some(ref data) = data_opt {
                     match arboard::Clipboard::new() {
                         Ok(mut cb) => {
                             let img = arboard::ImageData {
@@ -1680,25 +1711,54 @@ impl App {
         }
     }
 
-    // --- VIEWER TAB VIEW (PDF READER) ---
+    // --- VIEWER TAB VIEW (CONTINUOUS VERTICAL SCROLL PDF READER) ---
     fn view_viewer_tab(&self) -> Element<'_, Message> {
-        if let Some(ref handle) = self.viewer_image_handle {
-            let page_img = image(handle.clone());
-            let paper_container = container(page_img)
-                .padding(Padding::from(10))
-                .style(container::rounded_box);
+        if self.viewer_file.is_some() && self.viewer_total_pages > 0 {
+            let mut pages_col = column![].spacing(18).align_x(Alignment::Center);
 
-            let scroll_content = container(paper_container)
+            for p in 1..=self.viewer_total_pages {
+                let page_element: Element<'_, Message> = if let Some((handle, _)) = self.viewer_pages.get(&p) {
+                    let page_img = image(handle.clone());
+                    container(page_img)
+                        .padding(Padding::from(10))
+                        .style(container::rounded_box)
+                        .into()
+                } else {
+                    let (pw, ph) = if self.viewer_page_dims.0 > 0 {
+                        (self.viewer_page_dims.0 as f32, self.viewer_page_dims.1 as f32)
+                    } else {
+                        (640.0 * self.viewer_scale, 890.0 * self.viewer_scale)
+                    };
+                    container(
+                        column![
+                            text(format!("Halaman {}", p)).size(13).font(BOLD).style(text::secondary),
+                            text("Memuat tampilan...").size(11).style(text::secondary),
+                        ]
+                        .spacing(6)
+                        .align_x(Alignment::Center)
+                    )
+                    .width(pw)
+                    .height(ph)
+                    .center_x(pw)
+                    .center_y(ph)
+                    .style(container::rounded_box)
+                    .into()
+                };
+
+                pages_col = pages_col.push(page_element);
+            }
+
+            let scroll_content = container(pages_col)
                 .width(Length::Fill)
                 .center_x(Length::Fill)
-                .padding(Padding::from(16));
+                .padding(Padding::from([16, 20]));
 
             let main_scroll = scrollable(scroll_content)
                 .id("viewer_scroll")
                 .height(Length::Fill)
                 .on_scroll(|vp| Message::ViewerScrolled {
                     relative_y: vp.relative_offset().y,
-                    content_taller: vp.content_bounds().height > vp.bounds().height + 15.0,
+                    content_taller: true,
                 });
 
             if self.context_menu_open {
