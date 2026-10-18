@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use std::time::Instant;
 use iced::event::{self, Event};
 use iced::widget::{
-    button, column, container, image, progress_bar, row, rule, scrollable, text, text_input, Space,
+    button, column, container, image, mouse_area, progress_bar, row, rule, scrollable, text, text_input, Space,
 };
 use iced::{keyboard, mouse, Alignment, Element, Font, Length, Padding, Subscription, Task, Theme};
 
@@ -47,8 +47,6 @@ pub struct App {
     pub viewer_scale: f32,
     pub viewer_image_handle: Option<image::Handle>,
     pub viewer_current_data: Option<PageViewData>,
-    pub viewer_scroll_relative_y: f32,
-    pub viewer_content_taller: bool,
     pub viewer_last_scroll_nav: Option<Instant>,
     pub sidebar_open: bool,
     pub context_menu_open: bool,
@@ -105,11 +103,8 @@ pub enum Message {
     ViewerCopyPageToClipboard,
     ViewerExportPagePdf,
     ViewerExportPdfCompleted(Result<PathBuf, String>),
+    ToggleContextMenu,
     CloseContextMenu,
-    ViewerScrolled {
-        relative_y: f32,
-        content_taller: bool,
-    },
     EventOccurred(Event),
 
     // PDF to Images Actions
@@ -175,8 +170,6 @@ impl App {
             viewer_total_pages: 0,
             viewer_scale: 1.25,
             viewer_image_handle: None,
-            viewer_scroll_relative_y: 0.0,
-            viewer_content_taller: false,
             viewer_last_scroll_nav: None,
             pdf_to_img_file: None,
             pdf_to_img_total_pages: 0,
@@ -338,11 +331,6 @@ impl App {
 
     pub fn update(&mut self, message: Message) -> Task<Message> {
         match message {
-            Message::ViewerScrolled { relative_y, content_taller } => {
-                self.viewer_scroll_relative_y = relative_y;
-                self.viewer_content_taller = content_taller;
-                Task::none()
-            }
             Message::EventOccurred(event) => {
                 if self.active_tab != ActiveTab::View || self.viewer_file.is_none() {
                     return Task::none();
@@ -365,44 +353,43 @@ impl App {
                             .map(|t| now.duration_since(t).as_millis() > 250)
                             .unwrap_or(true);
 
-                        if y < 0.0 {
-                            // Scrolling down
-                            if !self.viewer_content_taller || self.viewer_scroll_relative_y >= 0.95 {
-                                if can_nav && self.viewer_current_page < self.viewer_total_pages {
+                        if can_nav {
+                            if y < 0.0 {
+                                // Scrolling down -> next page!
+                                if self.viewer_current_page < self.viewer_total_pages {
                                     self.viewer_last_scroll_nav = Some(now);
                                     self.viewer_current_page += 1;
-                                    self.viewer_scroll_relative_y = 0.0;
                                     return self.render_current_viewer_page();
                                 }
-                            }
-                        } else if y > 0.0 {
-                            // Scrolling up
-                            if !self.viewer_content_taller || self.viewer_scroll_relative_y <= 0.05 {
-                                if can_nav && self.viewer_current_page > 1 {
+                            } else if y > 0.0 {
+                                // Scrolling up -> previous page!
+                                if self.viewer_current_page > 1 {
                                     self.viewer_last_scroll_nav = Some(now);
                                     self.viewer_current_page -= 1;
-                                    self.viewer_scroll_relative_y = 1.0;
                                     return self.render_current_viewer_page();
                                 }
                             }
                         }
                     }
-                    Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Right)) => {
-                        self.context_menu_open = !self.context_menu_open;
-                    }
                     Event::Keyboard(keyboard::Event::KeyPressed { key, .. }) => {
                         match key {
-                            keyboard::Key::Named(keyboard::key::Named::PageDown) => {
+                            keyboard::Key::Named(keyboard::key::Named::PageDown)
+                            | keyboard::Key::Named(keyboard::key::Named::ArrowDown) => {
                                 if self.viewer_current_page < self.viewer_total_pages {
                                     self.viewer_current_page += 1;
                                     return self.render_current_viewer_page();
                                 }
                             }
-                            keyboard::Key::Named(keyboard::key::Named::PageUp) => {
+                            keyboard::Key::Named(keyboard::key::Named::PageUp)
+                            | keyboard::Key::Named(keyboard::key::Named::ArrowUp) => {
                                 if self.viewer_current_page > 1 {
                                     self.viewer_current_page -= 1;
                                     return self.render_current_viewer_page();
                                 }
+                            }
+                            keyboard::Key::Named(keyboard::key::Named::Escape) => {
+                                self.context_menu_open = false;
+                                self.menu_open = false;
                             }
                             _ => {}
                         }
@@ -411,12 +398,20 @@ impl App {
                 }
                 Task::none()
             }
-            Message::ToggleMenu => {
-                self.menu_open = !self.menu_open;
+            Message::ToggleContextMenu => {
+                self.context_menu_open = !self.context_menu_open;
+                Task::none()
+            }
+            Message::CloseContextMenu => {
+                self.context_menu_open = false;
                 Task::none()
             }
             Message::CloseMenu => {
                 self.menu_open = false;
+                Task::none()
+            }
+            Message::ToggleMenu => {
+                self.menu_open = !self.menu_open;
                 Task::none()
             }
             Message::ToggleSidebar => {
@@ -518,10 +513,6 @@ impl App {
                 }
                 Task::none()
             }
-            Message::CloseContextMenu => {
-                self.context_menu_open = false;
-                Task::none()
-            }
             Message::ViewerCopyPageToClipboard => {
                 self.context_menu_open = false;
                 if let Some(ref data) = self.viewer_current_data {
@@ -608,6 +599,7 @@ impl App {
                 Task::none()
             }
             Message::ViewerExportPagePng | Message::ViewerExportPageJpg => {
+                self.context_menu_open = false;
                 let format = if matches!(message, Message::ViewerExportPagePng) {
                     ExportImageFormat::Png
                 } else {
@@ -1630,17 +1622,17 @@ impl App {
                 .padding(Padding::from(10))
                 .style(container::rounded_box);
 
-            let main_scroll = scrollable(
+            let scroll_content = mouse_area(
                 container(paper_container)
                     .width(Length::Fill)
                     .center_x(Length::Fill)
                     .padding(Padding::from(16))
             )
-            .height(Length::Fill)
-            .on_scroll(|vp| Message::ViewerScrolled {
-                relative_y: vp.relative_offset().y,
-                content_taller: vp.content_bounds().height > vp.bounds().height,
-            });
+            .on_press(Message::CloseContextMenu)
+            .on_right_press(Message::ToggleContextMenu);
+
+            let main_scroll = scrollable(scroll_content)
+                .height(Length::Fill);
 
             if self.context_menu_open {
                 let action_btn = |icon: &'static str, title: &'static str, desc: &'static str, msg: Message| {
