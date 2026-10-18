@@ -1,0 +1,794 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PD - Desktop PDF Utility Application (Rust + Iced)</title>
+  <meta name="description" content="Aplikasi desktop cross-platform cepat, aman, dan offline-first untuk menggabungkan, memecah, dan mengompres dokumen PDF dengan performa tinggi berbasis Rust dan Iced.">
+  <meta name="keywords" content="PDF utility, merge PDF, split PDF, compress PDF, Rust, Iced GUI, desktop app, offline PDF">
+  
+  <!-- Open Graph -->
+  <meta property="og:title" content="PD - Desktop PDF Utility Application">
+  <meta property="og:description" content="Solusi desktop offline-first untuk manipulasi dokumen PDF: Merge, Split, dan Compress dengan performa native Rust.">
+  <meta property="og:url" content="https://if.co.id/pd/">
+  <meta property="og:type" content="website">
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <style>
+    :root {
+      --bg-dark: #0d1117;
+      --bg-card: rgba(22, 27, 34, 0.75);
+      --bg-card-hover: rgba(33, 38, 45, 0.9);
+      --border-color: rgba(240, 246, 252, 0.1);
+      --border-accent: rgba(122, 162, 247, 0.3);
+      --primary: #7aa2f7;
+      --primary-hover: #89b4fa;
+      --accent-cyan: #7dcfff;
+      --accent-green: #73daca;
+      --accent-purple: #bb9af7;
+      --text-main: #f0f6fc;
+      --text-muted: #8b949e;
+      --text-code: #e6edf3;
+      --radius-lg: 16px;
+      --radius-md: 10px;
+      --shadow-glow: 0 0 50px -10px rgba(122, 162, 247, 0.25);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-dark);
+      color: var(--text-main);
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      line-height: 1.6;
+      overflow-x: hidden;
+      background-image: 
+        radial-gradient(circle at 15% 15%, rgba(122, 162, 247, 0.08) 0%, transparent 40%),
+        radial-gradient(circle at 85% 35%, rgba(187, 154, 247, 0.06) 0%, transparent 40%),
+        radial-gradient(circle at 50% 85%, rgba(115, 218, 202, 0.05) 0%, transparent 50%);
+      background-attachment: fixed;
+    }
+
+    /* Container */
+    .container {
+      max-width: 1140px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    /* Navbar */
+    .navbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 20px 0;
+      border-bottom: 1px solid var(--border-color);
+      backdrop-filter: blur(12px);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(13, 17, 23, 0.85);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      text-decoration: none;
+      color: var(--text-main);
+    }
+
+    .brand-badge {
+      background: linear-gradient(135deg, #7aa2f7, #bb9af7);
+      color: #0d1117;
+      font-weight: 800;
+      font-size: 15px;
+      padding: 4px 10px;
+      border-radius: 8px;
+      letter-spacing: 0.5px;
+    }
+
+    .brand-title {
+      font-weight: 700;
+      font-size: 19px;
+      letter-spacing: -0.3px;
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 24px;
+    }
+
+    .nav-link {
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 500;
+      transition: color 0.2s;
+    }
+
+    .nav-link:hover {
+      color: var(--text-main);
+    }
+
+    .btn-github {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 16px;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid var(--border-color);
+      color: var(--text-main);
+      text-decoration: none;
+      font-size: 13px;
+      font-weight: 600;
+      transition: all 0.2s ease;
+    }
+
+    .btn-github:hover {
+      background: rgba(255, 255, 255, 0.12);
+      border-color: var(--primary);
+      transform: translateY(-1px);
+    }
+
+    /* Hero Section */
+    .hero {
+      text-align: center;
+      padding: 80px 0 50px;
+    }
+
+    .pill-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 16px;
+      border-radius: 50px;
+      background: rgba(122, 162, 247, 0.12);
+      border: 1px solid rgba(122, 162, 247, 0.25);
+      color: var(--accent-cyan);
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 24px;
+    }
+
+    .hero h1 {
+      font-size: clamp(36px, 5.5vw, 60px);
+      font-weight: 800;
+      letter-spacing: -1.5px;
+      line-height: 1.15;
+      margin-bottom: 20px;
+      background: linear-gradient(180deg, #ffffff 30%, #a5b4fc 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .hero p {
+      font-size: 18px;
+      color: var(--text-muted);
+      max-width: 680px;
+      margin: 0 auto 36px;
+    }
+
+    /* CTA Buttons */
+    .cta-group {
+      display: flex;
+      justify-content: center;
+      gap: 16px;
+      flex-wrap: wrap;
+      margin-bottom: 40px;
+    }
+
+    .btn-primary {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      background: linear-gradient(135deg, #7aa2f7, #3b82f6);
+      color: #ffffff;
+      padding: 14px 28px;
+      border-radius: var(--radius-md);
+      font-size: 15px;
+      font-weight: 700;
+      text-decoration: none;
+      box-shadow: 0 4px 20px rgba(59, 130, 246, 0.4);
+      transition: all 0.2s ease;
+    }
+
+    .btn-primary:hover {
+      background: linear-gradient(135deg, #89b4fa, #60a5fa);
+      transform: translateY(-2px);
+      box-shadow: 0 6px 25px rgba(59, 130, 246, 0.6);
+    }
+
+    .btn-secondary {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border-color);
+      color: var(--text-main);
+      padding: 14px 24px;
+      border-radius: var(--radius-md);
+      font-size: 15px;
+      font-weight: 600;
+      text-decoration: none;
+      transition: all 0.2s ease;
+    }
+
+    .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: var(--primary);
+    }
+
+    /* Code Terminal Box */
+    .terminal-box {
+      max-width: 640px;
+      margin: 0 auto 60px;
+      background: #161b22;
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.4);
+      text-align: left;
+    }
+
+    .terminal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 16px;
+      background: rgba(0, 0, 0, 0.25);
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .terminal-tabs {
+      display: flex;
+      gap: 12px;
+    }
+
+    .term-tab {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      padding: 4px 8px;
+      border-radius: 4px;
+      transition: all 0.2s;
+    }
+
+    .term-tab.active {
+      color: var(--primary);
+      background: rgba(122, 162, 247, 0.15);
+    }
+
+    .terminal-content {
+      padding: 16px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .terminal-code {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      color: #79c0ff;
+      word-break: break-all;
+    }
+
+    .copy-btn {
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid var(--border-color);
+      color: var(--text-main);
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      flex-shrink: 0;
+    }
+
+    .copy-btn:hover {
+      background: var(--primary);
+      color: #0d1117;
+    }
+
+    /* App Preview Card */
+    .app-preview {
+      background: #161b22;
+      border: 1px solid var(--border-accent);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+      box-shadow: var(--shadow-glow);
+      margin-bottom: 90px;
+      padding: 24px;
+    }
+
+    .preview-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 20px;
+      border-bottom: 1px solid var(--border-color);
+      padding-bottom: 16px;
+    }
+
+    .dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+    }
+    .dot-red { background: #ff5f56; }
+    .dot-yellow { background: #ffbd2e; }
+    .dot-green { background: #27c93f; }
+
+    .preview-body {
+      background: #1f2335;
+      border-radius: 12px;
+      padding: 28px;
+    }
+
+    .ui-tabs {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+
+    .ui-tab-btn {
+      padding: 8px 18px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 700;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      border: 1px solid transparent;
+    }
+
+    .ui-tab-active {
+      background: #7aa2f7;
+      color: #1a1b26;
+    }
+
+    .ui-tab-inactive {
+      background: #24283b;
+      color: #a9b1d6;
+      border-color: rgba(255, 255, 255, 0.05);
+    }
+
+    .file-item-card {
+      background: #24283b;
+      border-radius: 8px;
+      padding: 12px 18px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    .file-item-info {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .badge-index {
+      background: rgba(122, 162, 247, 0.15);
+      color: #7aa2f7;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    /* Features Grid */
+    .features-section {
+      padding: 40px 0 80px;
+    }
+
+    .section-title {
+      text-align: center;
+      margin-bottom: 50px;
+    }
+
+    .section-title h2 {
+      font-size: 32px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      margin-bottom: 12px;
+    }
+
+    .section-title p {
+      color: var(--text-muted);
+      font-size: 16px;
+    }
+
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 24px;
+    }
+
+    .feature-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-lg);
+      padding: 32px 28px;
+      transition: all 0.3s ease;
+      backdrop-filter: blur(8px);
+    }
+
+    .feature-card:hover {
+      background: var(--bg-card-hover);
+      border-color: var(--border-accent);
+      transform: translateY(-4px);
+    }
+
+    .feature-icon {
+      font-size: 32px;
+      margin-bottom: 18px;
+      display: inline-block;
+    }
+
+    .feature-card h3 {
+      font-size: 20px;
+      font-weight: 700;
+      margin-bottom: 12px;
+      color: var(--text-main);
+    }
+
+    .feature-card p {
+      color: var(--text-muted);
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    /* Downloads Matrix */
+    .downloads-section {
+      padding: 40px 0 90px;
+    }
+
+    .download-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 20px;
+    }
+
+    .download-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-lg);
+      padding: 24px;
+      text-align: center;
+      transition: all 0.2s ease;
+    }
+
+    .download-card:hover {
+      border-color: var(--primary);
+      transform: translateY(-3px);
+    }
+
+    .os-icon {
+      font-size: 36px;
+      margin-bottom: 12px;
+    }
+
+    .download-card h4 {
+      font-size: 17px;
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+
+    .download-card .os-arch {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-bottom: 16px;
+    }
+
+    .download-btn-sm {
+      display: block;
+      background: rgba(122, 162, 247, 0.15);
+      color: var(--primary);
+      border: 1px solid rgba(122, 162, 247, 0.3);
+      padding: 10px 16px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 700;
+      text-decoration: none;
+      transition: all 0.2s;
+    }
+
+    .download-btn-sm:hover {
+      background: var(--primary);
+      color: #0d1117;
+    }
+
+    /* Footer */
+    footer {
+      border-top: 1px solid var(--border-color);
+      padding: 40px 0;
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 13px;
+    }
+
+    footer a {
+      color: var(--primary);
+      text-decoration: none;
+    }
+
+    @media (max-width: 768px) {
+      .hero { padding: 50px 0 30px; }
+      .nav-links { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Navbar -->
+  <header class="navbar">
+    <div class="container" style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+      <a href="https://if.co.id/pd/" class="brand">
+        <span class="brand-badge">PD</span>
+        <span class="brand-title">Desktop PDF Utility</span>
+      </a>
+      <nav class="nav-links">
+        <a href="#features" class="nav-link">Fitur</a>
+        <a href="#install" class="nav-link">Instalasi</a>
+        <a href="#downloads" class="nav-link">Download</a>
+        <a href="https://github.com/ifcoid/pd" target="_blank" rel="noopener noreferrer" class="btn-github">
+          <svg height="16" width="16" viewBox="0 0 16 16" fill="currentColor">
+            <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
+          </svg>
+          GitHub Repo
+        </a>
+      </nav>
+    </div>
+  </header>
+
+  <!-- Hero -->
+  <main>
+    <section class="hero container">
+      <div class="pill-badge">
+        <span>⚡</span> 100% Offline-First • Bebas Batasan Ukuran • Rust & Iced
+      </div>
+      <h1>Manipulasi PDF Cepat & Aman<br>Langsung di Komputer Anda</h1>
+      <p>
+        Gabungkan, pecah, dan kompres dokumen PDF secara instan tanpa mengunggah file rahasia ke server luar. Terinspirasi dari fungsionalitas inti iLovePDF dengan performa native.
+      </p>
+
+      <div class="cta-group">
+        <a href="#downloads" class="btn-primary">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="7 10 12 15 17 10"></polyline>
+            <line x1="12" y1="15" x2="12" y2="3"></line>
+          </svg>
+          Download Sekarang (v0.1.0)
+        </a>
+        <a href="https://github.com/ifcoid/pd" target="_blank" rel="noopener noreferrer" class="btn-secondary">
+          Lihat Source Code
+        </a>
+      </div>
+
+      <!-- Quick Install Terminal -->
+      <div class="terminal-box" id="install">
+        <div class="terminal-header">
+          <div class="terminal-tabs">
+            <button class="term-tab active" id="tab-ps" onclick="switchInstaller('ps')">Windows (PowerShell)</button>
+            <button class="term-tab" id="tab-sh" onclick="switchInstaller('sh')">Linux / macOS (Shell)</button>
+          </div>
+          <span style="font-size: 11px; color: var(--text-muted);">One-line Quick Install</span>
+        </div>
+        <div class="terminal-content">
+          <code class="terminal-code" id="install-cmd">irm https://raw.githubusercontent.com/ifcoid/pd/main/install.ps1 | iex</code>
+          <button class="copy-btn" id="copy-btn" onclick="copyCommand()">Salin</button>
+        </div>
+      </div>
+
+      <!-- App Preview Graphic -->
+      <div class="app-preview">
+        <div class="preview-header">
+          <div class="dot dot-red"></div>
+          <div class="dot dot-yellow"></div>
+          <div class="dot dot-green"></div>
+          <span style="font-size: 12px; color: var(--text-muted); margin-left: 10px;">PD - Desktop PDF Utility (TokyoNight Theme)</span>
+        </div>
+        <div class="preview-body">
+          <div class="ui-tabs">
+            <div class="ui-tab-btn ui-tab-active">📑 Merge PDF</div>
+            <div class="ui-tab-btn ui-tab-inactive">✂️ Split PDF</div>
+            <div class="ui-tab-btn ui-tab-inactive">🗜️ Compress PDF</div>
+          </div>
+          <div class="file-item-card">
+            <div class="file-item-info">
+              <span class="badge-index">#1</span>
+              <div>
+                <strong style="font-size: 14px;">Laporan_Keuangan_Q1.pdf</strong>
+                <div style="font-size: 11px; color: var(--text-muted);">2.4 MB • 14 Halaman</div>
+              </div>
+            </div>
+            <span style="font-size: 12px; color: #73daca;">Siap digabung</span>
+          </div>
+          <div class="file-item-card">
+            <div class="file-item-info">
+              <span class="badge-index">#2</span>
+              <div>
+                <strong style="font-size: 14px;">Lampiran_Kontrak_Final.pdf</strong>
+                <div style="font-size: 11px; color: var(--text-muted);">1.1 MB • 6 Halaman</div>
+              </div>
+            </div>
+            <span style="font-size: 12px; color: #73daca;">Siap digabung</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Features Section -->
+    <section class="features-section container" id="features">
+      <div class="section-title">
+        <h2>Tiga Fitur Inti yang Paling Anda Butuhkan</h2>
+        <p>Dirancang sederhana, berkecepatan tinggi, dan 100% offline demi keamanan data dokumen Anda.</p>
+      </div>
+
+      <div class="features-grid">
+        <div class="feature-card">
+          <span class="feature-icon">📑</span>
+          <h3>Merge PDF (Penggabungan)</h3>
+          <p>
+            Gabungkan beberapa dokumen PDF terpilih menjadi satu dokumen rapi. Mendukung pengurutan naik-turun dan renumbering objek internal yang bersih dan valid.
+          </p>
+        </div>
+
+        <div class="feature-card">
+          <span class="feature-icon">✂️</span>
+          <h3>Split & Ekstraksi Halaman</h3>
+          <p>
+            Deteksi otomatis total halaman. Pisahkan halaman dengan fleksibel menggunakan format rentang seperti <code>1-5</code> atau nomor terpisah seperti <code>1, 3, 5</code>.
+          </p>
+        </div>
+
+        <div class="feature-card">
+          <span class="feature-icon">🗜️</span>
+          <h3>Kompresi Objek Modern</h3>
+          <p>
+            Kecilkan ukuran file dengan kompresi stream Flate internal dan pengemasan PDF 1.5 Object Streams (<code>/ObjStm</code>) serta pembersihan metadata orphaned.
+          </p>
+        </div>
+
+        <div class="feature-card">
+          <span class="feature-icon">🔒</span>
+          <h3>Privasi 100% Terjaga</h3>
+          <p>
+            Tidak ada dokumen yang dikirim ke cloud. Semua pemrosesan berlangsung sepenuhnya di CPU/RAM lokal komputer Anda tanpa memerlukan koneksi internet.
+          </p>
+        </div>
+
+        <div class="feature-card">
+          <span class="feature-icon">🚀</span>
+          <h3>Performa Native Rust</h3>
+          <p>
+            Aplikasi desktop sejati tanpa overhead memory Electron. Ditenagai oleh Rust dan framework GUI Iced yang ringan, responsif, dan hemat daya.
+          </p>
+        </div>
+
+        <div class="feature-card">
+          <span class="feature-icon">🌐</span>
+          <h3>Dukungan Lintas Platform</h3>
+          <p>
+            Tersedia untuk sistem operasi Windows (x64), Linux (x86_64), macOS Apple Silicon (M1/M2/M3), dan macOS Intel dengan installer instan.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Downloads Section -->
+    <section class="downloads-section container" id="downloads">
+      <div class="section-title">
+        <h2>Download Rilis Resmi</h2>
+        <p>Unduh binary siap pakai untuk sistem operasi Anda (Versi v0.1.0):</p>
+      </div>
+
+      <div class="download-grid">
+        <div class="download-card">
+          <div class="os-icon">🪟</div>
+          <h4>Windows</h4>
+          <div class="os-arch">x86_64 (.zip)</div>
+          <a href="https://github.com/ifcoid/pd/releases/download/v0.1.0/pd-windows-x86_64.zip" class="download-btn-sm">
+            Download ZIP
+          </a>
+        </div>
+
+        <div class="download-card">
+          <div class="os-icon">🐧</div>
+          <h4>Linux</h4>
+          <div class="os-arch">x86_64 (.tar.gz)</div>
+          <a href="https://github.com/ifcoid/pd/releases/download/v0.1.0/pd-linux-x86_64.tar.gz" class="download-btn-sm">
+            Download tar.gz
+          </a>
+        </div>
+
+        <div class="download-card">
+          <div class="os-icon">🍎</div>
+          <h4>macOS (Apple Silicon)</h4>
+          <div class="os-arch">M1 / M2 / M3 (.tar.gz)</div>
+          <a href="https://github.com/ifcoid/pd/releases/download/v0.1.0/pd-macos-aarch64.tar.gz" class="download-btn-sm">
+            Download tar.gz
+          </a>
+        </div>
+
+        <div class="download-card">
+          <div class="os-icon">🍏</div>
+          <h4>macOS (Intel)</h4>
+          <div class="os-arch">x86_64 (.tar.gz)</div>
+          <a href="https://github.com/ifcoid/pd/releases/download/v0.1.0/pd-macos-x86_64.tar.gz" class="download-btn-sm">
+            Download tar.gz
+          </a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Footer -->
+  <footer>
+    <div class="container">
+      <p>
+        &copy; 2026 <a href="https://if.co.id/">IF (if.co.id)</a> • Lisensi Terbuka di bawah <a href="https://github.com/ifcoid/pd/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">MIT License</a>.
+      </p>
+      <p style="margin-top: 8px;">
+        Repositori: <a href="https://github.com/ifcoid/pd" target="_blank" rel="noopener noreferrer">github.com/ifcoid/pd</a> • Rilis: <a href="https://github.com/ifcoid/pd/releases" target="_blank" rel="noopener noreferrer">GitHub Releases</a>
+      </p>
+    </div>
+  </footer>
+
+  <script>
+    const psCmd = 'irm https://raw.githubusercontent.com/ifcoid/pd/main/install.ps1 | iex';
+    const shCmd = 'curl -fsSL https://raw.githubusercontent.com/ifcoid/pd/main/install.sh | bash';
+
+    function switchInstaller(type) {
+      const codeElem = document.getElementById('install-cmd');
+      const tabPs = document.getElementById('tab-ps');
+      const tabSh = document.getElementById('tab-sh');
+
+      if (type === 'ps') {
+        codeElem.textContent = psCmd;
+        tabPs.classList.add('active');
+        tabSh.classList.remove('active');
+      } else {
+        codeElem.textContent = shCmd;
+        tabSh.classList.add('active');
+        tabPs.classList.remove('active');
+      }
+    }
+
+    function copyCommand() {
+      const codeText = document.getElementById('install-cmd').textContent;
+      navigator.clipboard.writeText(codeText).then(() => {
+        const btn = document.getElementById('copy-btn');
+        const orig = btn.textContent;
+        btn.textContent = 'Tersalin!';
+        btn.style.background = '#73daca';
+        btn.style.color = '#0d1117';
+        setTimeout(() => {
+          btn.textContent = orig;
+          btn.style.background = '';
+          btn.style.color = '';
+        }, 2000);
+      });
+    }
+  </script>
+</body>
+</html>
