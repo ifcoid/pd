@@ -169,22 +169,54 @@ impl App {
 
     pub fn boot() -> (Self, Task<Message>) {
         let mut app = Self::new();
-        if let Some(arg) = std::env::args().nth(1) {
-            let path = PathBuf::from(arg);
-            if path.exists() && path.is_file() {
-                if let Ok(total) = get_pdf_page_count(&path) {
-                    app.viewer_file = Some(path.clone());
+        let args: Vec<String> = std::env::args().skip(1).collect();
+
+        if !args.is_empty() {
+            let first_path = PathBuf::from(&args[0]);
+            let ext = first_path
+                .extension()
+                .and_then(|s| s.to_str())
+                .unwrap_or("")
+                .to_lowercase();
+
+            if first_path.exists() && first_path.is_file() && ext == "pdf" {
+                if let Ok(total) = get_pdf_page_count(&first_path) {
+                    app.viewer_file = Some(first_path.clone());
                     app.viewer_total_pages = total;
                     app.viewer_current_page = 1;
                     let scale = app.viewer_scale;
                     app.status = OperationStatus::Processing("Membuka dokumen PDF...".to_string());
                     let task = Task::future(async move {
-                        match render_page_to_rgba(&path, 1, scale) {
+                        match render_page_to_rgba(&first_path, 1, scale) {
                             Ok(data) => Message::ViewerPageRendered(Ok(data)),
                             Err(e) => Message::ViewerPageRendered(Err(e.to_string())),
                         }
                     });
                     return (app, task);
+                }
+            } else {
+                // Check if arguments contain image files
+                let image_extensions = ["png", "jpg", "jpeg", "webp", "bmp"];
+                for arg in &args {
+                    if arg == "--gui-images" {
+                        continue;
+                    }
+                    let p = PathBuf::from(arg);
+                    if p.exists() && p.is_file() {
+                        let e = p
+                            .extension()
+                            .and_then(|s| s.to_str())
+                            .unwrap_or("")
+                            .to_lowercase();
+                        if image_extensions.contains(&e.as_str()) && !app.image_files.contains(&p) {
+                            app.image_files.push(p);
+                        }
+                    }
+                }
+
+                if !app.image_files.is_empty() {
+                    app.active_tab = ActiveTab::ImagesToPdf;
+                    app.status = OperationStatus::Idle;
                 }
             }
         }

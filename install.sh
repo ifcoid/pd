@@ -191,7 +191,39 @@ application/pdf=pd.desktop;
 application/pdf=pd.desktop;
 EOF
     fi
-    echo -e "${GREEN}[✓] File .pdf berhasil diasosiasikan dengan pd di Linux!${NC}"
+
+    # Nautilus right-click scripts
+    NAUTILUS_SCRIPTS="$HOME/.local/share/nautilus/scripts"
+    mkdir -p "$NAUTILUS_SCRIPTS"
+    cat <<EOF > "$NAUTILUS_SCRIPTS/Konversi ke PDF (PD)"
+#!/usr/bin/env bash
+${INSTALL_DIR}/pd --to-pdf "\$@"
+EOF
+    chmod +x "$NAUTILUS_SCRIPTS/Konversi ke PDF (PD)"
+
+    # KDE Dolphin ServiceMenu
+    KDE_SERVICES="$HOME/.local/share/kio/servicemenus"
+    mkdir -p "$KDE_SERVICES"
+    cat <<EOF > "$KDE_SERVICES/pd_convert.desktop"
+[Desktop Entry]
+Type=Service
+ServiceTypes=KonqPopupMenu/Plugin
+MimeType=image/png;image/jpeg;image/webp;image/bmp;
+Actions=pdConvert;pdOpen;
+X-KDE-Submenu=PD - PDF Utility
+
+[Desktop Action pdConvert]
+Name=Konversi ke PDF dengan PD
+Icon=application-pdf
+Exec=${INSTALL_DIR}/pd --to-pdf %F
+
+[Desktop Action pdOpen]
+Name=Buka di PD (Gambar ke PDF)...
+Icon=application-pdf
+Exec=${INSTALL_DIR}/pd %F
+EOF
+
+    echo -e "${GREEN}[✓] File .pdf dan menu klik kanan gambar berhasil didaftarkan di Linux!${NC}"
 
 elif [ "$OS" = "Darwin" ]; then
     MAC_APP_DIR="$HOME/Applications/pd.app"

@@ -206,6 +206,42 @@ try {
     Write-WarningMsg "Tidak dapat mengatur asosiasi otomatis file .pdf: $($_.Exception.Message)"
 }
 
+# 8. Daftarkan Menu Klik Kanan (Context Menu ala WinRAR) untuk File Gambar
+Write-Step "Mendaftarkan menu klik kanan Windows Explorer untuk file gambar..."
+try {
+    $ImgExtensions = @(".png", ".jpg", ".jpeg", ".webp", ".bmp")
+    $MenuNameConvert = "Konversi ke PDF dengan PD"
+    $MenuNameOpen = "Buka di PD (Gambar ke PDF)..."
+    $CmdConvert = "`"$ExePath`" --to-pdf `"%1`""
+    $CmdOpen = "`"$ExePath`" `"%1`""
+
+    # Daftarkan pada SystemFileAssociations\image
+    $SysImgPath = "HKCU:\Software\Classes\SystemFileAssociations\image\shell"
+    New-Item -Path "$SysImgPath\PD.Convert" -Value $MenuNameConvert -Force | Out-Null
+    Set-ItemProperty -Path "$SysImgPath\PD.Convert" -Name "Icon" -Value "$ExePath,0" -Force
+    New-Item -Path "$SysImgPath\PD.Convert\command" -Value $CmdConvert -Force | Out-Null
+
+    New-Item -Path "$SysImgPath\PD.Open" -Value $MenuNameOpen -Force | Out-Null
+    Set-ItemProperty -Path "$SysImgPath\PD.Open" -Name "Icon" -Value "$ExePath,0" -Force
+    New-Item -Path "$SysImgPath\PD.Open\command" -Value $CmdOpen -Force | Out-Null
+
+    # Daftarkan per ekstensi gambar untuk kompatibilitas maksimal
+    foreach ($ext in $ImgExtensions) {
+        $ExtShellPath = "HKCU:\Software\Classes\SystemFileAssociations\$ext\shell"
+        New-Item -Path "$ExtShellPath\PD.Convert" -Value $MenuNameConvert -Force | Out-Null
+        Set-ItemProperty -Path "$ExtShellPath\PD.Convert" -Name "Icon" -Value "$ExePath,0" -Force
+        New-Item -Path "$ExtShellPath\PD.Convert\command" -Value $CmdConvert -Force | Out-Null
+
+        New-Item -Path "$ExtShellPath\PD.Open" -Value $MenuNameOpen -Force | Out-Null
+        Set-ItemProperty -Path "$ExtShellPath\PD.Open" -Name "Icon" -Value "$ExePath,0" -Force
+        New-Item -Path "$ExtShellPath\PD.Open\command" -Value $CmdOpen -Force | Out-Null
+    }
+
+    Write-SuccessMsg "Menu klik kanan untuk file gambar (PNG, JPG, WebP, BMP) berhasil didaftarkan!"
+} catch {
+    Write-WarningMsg "Tidak dapat mendaftarkan menu klik kanan: $($_.Exception.Message)"
+}
+
 Write-Host ""
 if ($IsUpdate) {
     Write-SuccessMsg "Update selesai! PD berhasil diperbarui ke versi $TagName."

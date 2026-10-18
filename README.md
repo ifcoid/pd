@@ -38,10 +38,10 @@ PD menggabungkan reader PDF ultra-ringan dengan alat manipulasi dokumen esensial
    * Pilihan cakupan fleksibel: **Semua Halaman**, atau **Rentang Halaman Tertentu** (misal: `1, 3-5, 8`).
    * Pilihan resolusi / kualitas gambar: **150 DPI (1.5x)**, **200 DPI (HD 2.0x)**, atau **300 DPI (Ultra HD 3.0x)**.
    * Penyimpanan otomatis ke folder tujuan dengan penamaan rapi berurutan.
-3. **Images to PDF (Gambar ke PDF):**
-   * Mengonversi satu atau beberapa file gambar (`.png`, `.jpg`, `.jpeg`, `.webp`, `.bmp`) menjadi satu dokumen PDF utuh.
-   * Pengaturan urutan gambar yang fleksibel (*reorder* naik / turun / hapus).
-   * Mempertahankan kualitas dan dimensi asli tiap gambar secara optimal.
+3. **Images to PDF & Integrasi Menu Klik Kanan (Explorer Context Menu):**
+   * **Klik Kanan Instan (ala WinRAR):** Klik kanan pada file gambar (`.png`, `.jpg`, `.jpeg`, `.webp`, `.bmp`) di Windows Explorer / Linux file manager, lalu pilih **"Konversi ke PDF dengan PD"** untuk langsung membuat file PDF di folder yang sama dalam sekejap mata tanpa perlu membuka antarmuka.
+   * **Pilihan Beberapa File:** Pilih beberapa gambar sekaligus, klik kanan dan pilih **"Buka di PD (Gambar ke PDF)..."** untuk menyusun urutan halaman sebelum membuat PDF.
+   * Mendukung konversi dengan mempertahankan kualitas dan dimensi asli tiap gambar secara optimal.
 4. **Merge PDF:**
    * Menggabungkan beberapa file PDF terpilih menjadi satu dokumen utuh.
    * Mendukung pengaturan urutan file (*reorder*).
