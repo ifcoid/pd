@@ -1289,11 +1289,18 @@ impl App {
             );
         }
 
-        let main_layout = column![
-            top_bar,
-            status_bar,
-            body_row.width(Length::Fill).height(Length::Fill)
-        ]
+        let main_layout = if self.active_tab == ActiveTab::View {
+            column![
+                top_bar,
+                body_row.width(Length::Fill).height(Length::Fill)
+            ]
+        } else {
+            column![
+                top_bar,
+                status_bar,
+                body_row.width(Length::Fill).height(Length::Fill)
+            ]
+        }
         .spacing(0)
         .width(Length::Fill)
         .height(Length::Fill);
@@ -1459,11 +1466,37 @@ impl App {
                 .padding(Padding::from([4, 8]));
             let zoom_in = if self.viewer_file.is_some() && !is_processing { zoom_in.on_press(Message::ViewerZoomIn) } else { zoom_in };
 
+            let status_indicator: Element<'_, Message> = match &self.status {
+                OperationStatus::Processing(msg) => {
+                    row![
+                        text("⏳").size(11),
+                        text(msg).size(11).style(text::primary)
+                    ]
+                    .spacing(4)
+                    .align_y(Alignment::Center)
+                    .into()
+                }
+                OperationStatus::Success(msg) => {
+                    text(msg).size(11).style(text::success).into()
+                }
+                OperationStatus::Error(msg) => {
+                    text(msg).size(11).style(text::danger).into()
+                }
+                OperationStatus::Idle => Space::new().width(0).into(),
+            };
+
+            let title_with_status = row![
+                text(display_name).size(12).font(BOLD).style(text::secondary),
+                status_indicator
+            ]
+            .spacing(8)
+            .align_y(Alignment::Center);
+
             let top_row = row![
                 logo_badge,
                 sidebar_btn,
                 open_btn,
-                text(display_name).size(12).font(BOLD).style(text::secondary),
+                title_with_status,
                 Space::new().width(Length::Fill),
                 row![zoom_out, zoom_lbl, zoom_in].spacing(2).align_y(Alignment::Center),
                 text("│").size(12).style(text::secondary),
