@@ -127,12 +127,12 @@ try {
     $WshShell = New-Object -ComObject WScript.Shell
     $StartMenuDir = [Environment]::GetFolderPath([Environment+SpecialFolder]::StartMenu)
     $ProgramsDir = Join-Path $StartMenuDir "Programs"
-    $ShortcutPath = Join-Path $ProgramsDir "PD - PDF Utility.lnk"
+    $ShortcutPath = Join-Path $ProgramsDir "pd.lnk"
     
     $Shortcut = $WshShell.CreateShortcut($ShortcutPath)
     $Shortcut.TargetPath = $ExePath
     $Shortcut.WorkingDirectory = $InstallDir
-    $Shortcut.Description = "PD - Desktop PDF Utility"
+    $Shortcut.Description = "pd - Ultra-Lightweight PDF Reader & Utility"
     $Shortcut.Save()
     Write-SuccessMsg "Pintasan Start Menu berhasil dibuat: $ShortcutPath"
 } catch {

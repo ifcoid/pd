@@ -568,17 +568,17 @@ impl App {
 
         let title_col = column![
             row![
-                text("PD").size(24).font(BOLD),
-                text(" - Desktop PDF Utility & Reader").size(18),
+                text("pd").size(26).font(BOLD),
+                text(" • Ultra-Lightweight PDF Reader & Utility").size(15).style(text::secondary),
                 Space::new().width(10),
                 app_badge
             ]
             .align_y(Alignment::Center),
-            text("PDF Viewer teringan di muka bumi dan utilitas manipulasi dokumen 100% offline")
+            text("PDF reader teringan di muka bumi dan utilitas manipulasi dokumen 100% offline")
                 .size(12)
                 .style(text::secondary)
         ]
-        .spacing(3);
+        .spacing(2);
 
         container(title_col)
             .width(Length::Fill)

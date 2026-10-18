@@ -138,8 +138,8 @@ if [ "$OS" = "Linux" ]; then
     
     cat <<EOF > "$APP_DIR/pd.desktop"
 [Desktop Entry]
-Name=PD - Desktop PDF Utility
-Comment=Ultra-lightweight Pure-Rust PDF Reader & Desktop Utility
+Name=pd
+Comment=pd - Ultra-lightweight Pure-Rust PDF Reader & Desktop Utility
 Exec=${INSTALL_DIR}/pd %U
 Terminal=false
 Type=Application
@@ -178,10 +178,10 @@ application/pdf=pd.desktop;
 application/pdf=pd.desktop;
 EOF
     fi
-    echo -e "${GREEN}[✓] File .pdf berhasil diasosiasikan dengan PD di Linux!${NC}"
+    echo -e "${GREEN}[✓] File .pdf berhasil diasosiasikan dengan pd di Linux!${NC}"
 
 elif [ "$OS" = "Darwin" ]; then
-    MAC_APP_DIR="$HOME/Applications/PD.app"
+    MAC_APP_DIR="$HOME/Applications/pd.app"
     mkdir -p "$MAC_APP_DIR/Contents/MacOS" "$MAC_APP_DIR/Contents/Resources"
     cat <<'EOF' > "$MAC_APP_DIR/Contents/MacOS/pd_launcher"
 #!/bin/bash
@@ -195,9 +195,9 @@ EOF
 <plist version="1.0">
 <dict>
     <key>CFBundleName</key>
-    <string>PD</string>
+    <string>pd</string>
     <key>CFBundleDisplayName</key>
-    <string>PD - Desktop PDF Utility</string>
+    <string>pd</string>
     <key>CFBundleIdentifier</key>
     <string>id.co.if.pd</string>
     <key>CFBundleVersion</key>
