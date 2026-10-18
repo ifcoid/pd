@@ -203,6 +203,27 @@ impl App {
                 }
             }
 
+            if (args[0] == "--gui-merge" || args[0] == "--merge") && args.len() > 1 {
+                for arg in args.iter().skip(1) {
+                    let p = PathBuf::from(arg);
+                    if p.exists() && p.is_file() {
+                        let ext = p
+                            .extension()
+                            .and_then(|s| s.to_str())
+                            .unwrap_or("")
+                            .to_lowercase();
+                        if ext == "pdf" && !app.merge_files.contains(&p) {
+                            app.merge_files.push(p);
+                        }
+                    }
+                }
+                if !app.merge_files.is_empty() {
+                    app.active_tab = ActiveTab::Merge;
+                    app.status = OperationStatus::Idle;
+                    return (app, Task::none());
+                }
+            }
+
             let first_path = PathBuf::from(&args[0]);
             let ext = first_path
                 .extension()

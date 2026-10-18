@@ -91,6 +91,29 @@ fn main() -> iced::Result {
         std::process::exit(0);
     }
 
+    if args.len() > 1 && args[1] == "--merge" {
+        let pdf_paths: Vec<PathBuf> = args[2..]
+            .iter()
+            .map(PathBuf::from)
+            .filter(|p| p.exists() && p.is_file())
+            .collect();
+
+        if pdf_paths.len() >= 2 {
+            let parent_dir = pdf_paths[0].parent().unwrap_or_else(|| Path::new("."));
+            let stem = pdf_paths[0]
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("document");
+
+            let dest_path = parent_dir.join(format!("{}_merged.pdf", stem));
+            if let Err(e) = pdf_ops::merge_pdfs(&pdf_paths, &dest_path) {
+                eprintln!("Error merging PDFs: {}", e);
+                std::process::exit(1);
+            }
+            std::process::exit(0);
+        }
+    }
+
     iced::application(App::boot, App::update, App::view)
         .title("pd")
         .theme(App::theme)

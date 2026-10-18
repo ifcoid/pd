@@ -237,14 +237,31 @@ ${INSTALL_DIR}/pd --compress "\$@"
 EOF
     chmod +x "$NAUTILUS_SCRIPTS/Kompres PDF (PD)"
 
+    # Nautilus Merge PDF script
+    cat <<EOF > "$NAUTILUS_SCRIPTS/Gabungkan PDF (PD)"
+#!/usr/bin/env bash
+${INSTALL_DIR}/pd --merge "\$@"
+EOF
+    chmod +x "$NAUTILUS_SCRIPTS/Gabungkan PDF (PD)"
+
     # KDE Dolphin PDF Actions ServiceMenu
     cat <<EOF > "$KDE_SERVICES/pd_pdf_actions.desktop"
 [Desktop Entry]
 Type=Service
 ServiceTypes=KonqPopupMenu/Plugin
 MimeType=application/pdf;
-Actions=pdCompress;pdOpenCompress;pdToPng;pdToJpg;pdOpenImages;
+Actions=pdMerge;pdOpenMerge;pdCompress;pdOpenCompress;pdToPng;pdToJpg;pdOpenImages;
 X-KDE-Submenu=PD - PDF Utility
+
+[Desktop Action pdMerge]
+Name=Gabungkan PDF dengan PD
+Icon=application-pdf
+Exec=${INSTALL_DIR}/pd --merge %F
+
+[Desktop Action pdOpenMerge]
+Name=Buka di PD (Gabungkan PDF)...
+Icon=application-pdf
+Exec=${INSTALL_DIR}/pd --gui-merge %F
 
 [Desktop Action pdCompress]
 Name=Kompres PDF dengan PD
@@ -272,7 +289,7 @@ Icon=application-pdf
 Exec=${INSTALL_DIR}/pd --gui-pdf-to-images %F
 EOF
 
-    echo -e "${GREEN}[✓] File .pdf dan menu klik kanan (Gambar, PDF & Kompres) berhasil didaftarkan di Linux!${NC}"
+    echo -e "${GREEN}[✓] File .pdf dan menu klik kanan (Gambar, PDF, Kompres & Merge) berhasil didaftarkan di Linux!${NC}"
 
 elif [ "$OS" = "Darwin" ]; then
     MAC_APP_DIR="$HOME/Applications/pd.app"

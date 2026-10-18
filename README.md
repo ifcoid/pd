@@ -43,9 +43,10 @@ PD menggabungkan reader PDF ultra-ringan dengan alat manipulasi dokumen esensial
    * **Klik Kanan Instan (ala WinRAR):** Klik kanan pada file gambar (`.png`, `.jpg`, `.jpeg`, `.webp`, `.bmp`) di Windows Explorer / Linux file manager, lalu pilih **"Konversi ke PDF dengan PD"** untuk langsung membuat file PDF di folder yang sama dalam sekejap mata tanpa perlu membuka antarmuka.
    * **Pilihan Beberapa File:** Pilih beberapa gambar sekaligus, klik kanan dan pilih **"Buka di PD (Gambar ke PDF)..."** untuk menyusun urutan halaman sebelum membuat PDF.
    * Mendukung konversi dengan mempertahankan kualitas dan dimensi asli tiap gambar secara optimal.
-4. **Merge PDF:**
-   * Menggabungkan beberapa file PDF terpilih menjadi satu dokumen utuh.
-   * Mendukung pengaturan urutan file (*reorder*).
+4. **Merge PDF & Menu Klik Kanan Gabungkan (Explorer Context Menu):**
+   * **Klik Kanan Instan (ala WinRAR):** Pilih beberapa file PDF di Windows Explorer / Linux file manager, klik kanan dan pilih **"Gabungkan PDF dengan PD"** untuk langsung menyatukan seluruh dokumen terpilih menjadi satu file `<nama_file_pertama>_merged.pdf` di folder yang sama dalam sekejap tanpa perlu membuka aplikasi.
+   * **Buka di GUI:** Atau pilih **"Buka di PD (Gabungkan PDF)..."** untuk membuka tab Merge dengan seluruh file yang dipilih sudah otomatis terisi dan siap diatur ulang urutannya (*reorder naik/turun*).
+   * Menjaga keutuhan konten dan mereferensikan kembali ID objek internal PDF secara terstruktur dan valid.
 5. **Split PDF:**
    * Memecah file PDF berdasarkan rentang halaman (*page ranges*) tertentu menjadi dokumen terpisah.
 6. **Compress PDF & Menu Klik Kanan Kompres (Explorer Context Menu):**

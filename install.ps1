@@ -219,10 +219,12 @@ try {
     $SysImgPath = "HKCU:\Software\Classes\SystemFileAssociations\image\shell"
     New-Item -Path "$SysImgPath\PD.Convert" -Value $MenuNameConvert -Force | Out-Null
     Set-ItemProperty -Path "$SysImgPath\PD.Convert" -Name "Icon" -Value "$ExePath,0" -Force
+    Set-ItemProperty -Path "$SysImgPath\PD.Convert" -Name "MultiSelectModel" -Value "Player" -Force
     New-Item -Path "$SysImgPath\PD.Convert\command" -Value $CmdConvert -Force | Out-Null
 
     New-Item -Path "$SysImgPath\PD.Open" -Value $MenuNameOpen -Force | Out-Null
     Set-ItemProperty -Path "$SysImgPath\PD.Open" -Name "Icon" -Value "$ExePath,0" -Force
+    Set-ItemProperty -Path "$SysImgPath\PD.Open" -Name "MultiSelectModel" -Value "Player" -Force
     New-Item -Path "$SysImgPath\PD.Open\command" -Value $CmdOpen -Force | Out-Null
 
     # Daftarkan per ekstensi gambar untuk kompatibilitas maksimal
@@ -230,10 +232,12 @@ try {
         $ExtShellPath = "HKCU:\Software\Classes\SystemFileAssociations\$ext\shell"
         New-Item -Path "$ExtShellPath\PD.Convert" -Value $MenuNameConvert -Force | Out-Null
         Set-ItemProperty -Path "$ExtShellPath\PD.Convert" -Name "Icon" -Value "$ExePath,0" -Force
+        Set-ItemProperty -Path "$ExtShellPath\PD.Convert" -Name "MultiSelectModel" -Value "Player" -Force
         New-Item -Path "$ExtShellPath\PD.Convert\command" -Value $CmdConvert -Force | Out-Null
 
         New-Item -Path "$ExtShellPath\PD.Open" -Value $MenuNameOpen -Force | Out-Null
         Set-ItemProperty -Path "$ExtShellPath\PD.Open" -Name "Icon" -Value "$ExePath,0" -Force
+        Set-ItemProperty -Path "$ExtShellPath\PD.Open" -Name "MultiSelectModel" -Value "Player" -Force
         New-Item -Path "$ExtShellPath\PD.Open\command" -Value $CmdOpen -Force | Out-Null
     }
 
@@ -309,6 +313,39 @@ try {
     Write-SuccessMsg "Menu klik kanan file PDF (Kompres PDF) berhasil didaftarkan!"
 } catch {
     Write-WarningMsg "Tidak dapat mendaftarkan menu klik kanan Kompres PDF: $($_.Exception.Message)"
+}
+
+# 11. Daftarkan Menu Klik Kanan untuk Gabungkan PDF (Merge PDF)
+Write-Step "Mendaftarkan menu klik kanan Windows Explorer untuk Gabungkan PDF (Merge)..."
+try {
+    $PdfShellPaths = @(
+        "HKCU:\Software\Classes\SystemFileAssociations\.pdf\shell",
+        "HKCU:\Software\Classes\pd.pdf\shell"
+    )
+
+    $MenuPdfMerge = "Gabungkan PDF dengan PD"
+    $MenuPdfGuiMerge = "Buka di PD (Gabungkan PDF)..."
+
+    $CmdPdfMerge = "`"$ExePath`" --merge `"%1`""
+    $CmdPdfGuiMerge = "`"$ExePath`" --gui-merge `"%1`""
+
+    foreach ($basePath in $PdfShellPaths) {
+        # Instant Merge
+        New-Item -Path "$basePath\PD.Merge" -Value $MenuPdfMerge -Force | Out-Null
+        Set-ItemProperty -Path "$basePath\PD.Merge" -Name "Icon" -Value "$ExePath,0" -Force
+        Set-ItemProperty -Path "$basePath\PD.Merge" -Name "MultiSelectModel" -Value "Player" -Force
+        New-Item -Path "$basePath\PD.Merge\command" -Value $CmdPdfMerge -Force | Out-Null
+
+        # Open in GUI Merge tab with files loaded
+        New-Item -Path "$basePath\PD.OpenMerge" -Value $MenuPdfGuiMerge -Force | Out-Null
+        Set-ItemProperty -Path "$basePath\PD.OpenMerge" -Name "Icon" -Value "$ExePath,0" -Force
+        Set-ItemProperty -Path "$basePath\PD.OpenMerge" -Name "MultiSelectModel" -Value "Player" -Force
+        New-Item -Path "$basePath\PD.OpenMerge\command" -Value $CmdPdfGuiMerge -Force | Out-Null
+    }
+
+    Write-SuccessMsg "Menu klik kanan file PDF (Gabungkan PDF / Merge) berhasil didaftarkan!"
+} catch {
+    Write-WarningMsg "Tidak dapat mendaftarkan menu klik kanan Gabungkan PDF: $($_.Exception.Message)"
 }
 
 Write-Host ""
