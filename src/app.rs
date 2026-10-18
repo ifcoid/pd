@@ -1,10 +1,13 @@
 use std::path::PathBuf;
 use iced::widget::{
-    button, column, container, progress_bar, row, rule, scrollable, text, text_input, Space,
+    button, column, container, image, progress_bar, row, rule, scrollable, text, text_input, Space,
 };
 use iced::{Alignment, Element, Font, Length, Padding, Task, Theme};
 
-use crate::pdf_ops::{compress_pdf, extract_pages_to_file, get_pdf_page_count, merge_pdfs, CompressionReport};
+use crate::pdf_ops::{
+    compress_pdf, extract_pages_to_file, get_pdf_page_count, merge_pdfs, render_page_to_rgba,
+    CompressionReport, PageViewData,
+};
 
 const BOLD: Font = Font {
     weight: iced::font::Weight::Bold,
@@ -13,6 +16,7 @@ const BOLD: Font = Font {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ActiveTab {
+    View,
     Merge,
     Split,
     Compress,
@@ -30,6 +34,13 @@ pub struct App {
     pub active_tab: ActiveTab,
     pub status: OperationStatus,
 
+    // Viewer Tab State (Ultra-Lightweight Pure-Rust Reader)
+    pub viewer_file: Option<PathBuf>,
+    pub viewer_current_page: usize,
+    pub viewer_total_pages: usize,
+    pub viewer_scale: f32,
+    pub viewer_image_handle: Option<image::Handle>,
+
     // Merge Tab State
     pub merge_files: Vec<PathBuf>,
 
@@ -46,6 +57,16 @@ pub struct App {
 #[derive(Debug, Clone)]
 pub enum Message {
     SwitchTab(ActiveTab),
+
+    // Viewer Actions
+    PickViewerFile,
+    ViewerFileSelected(Option<PathBuf>),
+    ViewerNextPage,
+    ViewerPrevPage,
+    ViewerZoomIn,
+    ViewerZoomOut,
+    ViewerZoomReset,
+    ViewerPageRendered(Result<PageViewData, String>),
 
     // Merge Actions
     PickMergeFiles,
@@ -83,8 +104,13 @@ impl Default for App {
 impl App {
     pub fn new() -> Self {
         Self {
-            active_tab: ActiveTab::Merge,
+            active_tab: ActiveTab::View,
             status: OperationStatus::Idle,
+            viewer_file: None,
+            viewer_current_page: 1,
+            viewer_total_pages: 0,
+            viewer_scale: 1.25,
+            viewer_image_handle: None,
             merge_files: Vec::new(),
             split_file: None,
             split_total_pages: 0,
@@ -94,9 +120,26 @@ impl App {
         }
     }
 
-
     pub fn theme(&self) -> Theme {
         Theme::TokyoNight
+    }
+
+    fn render_current_viewer_page(&mut self) -> Task<Message> {
+        let file = match &self.viewer_file {
+            Some(f) => f.clone(),
+            None => return Task::none(),
+        };
+
+        let page = self.viewer_current_page;
+        let scale = self.viewer_scale;
+        self.status = OperationStatus::Processing(format!("Me-render halaman {}...", page));
+
+        Task::future(async move {
+            match render_page_to_rgba(&file, page, scale) {
+                Ok(data) => Message::ViewerPageRendered(Ok(data)),
+                Err(e) => Message::ViewerPageRendered(Err(e.to_string())),
+            }
+        })
     }
 
     pub fn update(&mut self, message: Message) -> Task<Message> {
@@ -108,6 +151,79 @@ impl App {
             }
             Message::DismissStatus => {
                 self.status = OperationStatus::Idle;
+                Task::none()
+            }
+
+            // --- VIEWER ACTIONS ---
+            Message::PickViewerFile => {
+                Task::future(async move {
+                    let file = rfd::AsyncFileDialog::new()
+                        .add_filter("PDF files", &["pdf"])
+                        .set_title("Buka file PDF untuk dibaca")
+                        .pick_file()
+                        .await;
+
+                    Message::ViewerFileSelected(file.map(|h| h.path().to_path_buf()))
+                })
+            }
+            Message::ViewerFileSelected(file_opt) => {
+                if let Some(file) = file_opt {
+                    self.viewer_file = Some(file);
+                    self.viewer_current_page = 1;
+                    return self.render_current_viewer_page();
+                }
+                Task::none()
+            }
+            Message::ViewerNextPage => {
+                if self.viewer_current_page < self.viewer_total_pages {
+                    self.viewer_current_page += 1;
+                    return self.render_current_viewer_page();
+                }
+                Task::none()
+            }
+            Message::ViewerPrevPage => {
+                if self.viewer_current_page > 1 {
+                    self.viewer_current_page -= 1;
+                    return self.render_current_viewer_page();
+                }
+                Task::none()
+            }
+            Message::ViewerZoomIn => {
+                if self.viewer_scale < 3.0 {
+                    self.viewer_scale = (self.viewer_scale + 0.25).min(3.0);
+                    return self.render_current_viewer_page();
+                }
+                Task::none()
+            }
+            Message::ViewerZoomOut => {
+                if self.viewer_scale > 0.5 {
+                    self.viewer_scale = (self.viewer_scale - 0.25).max(0.5);
+                    return self.render_current_viewer_page();
+                }
+                Task::none()
+            }
+            Message::ViewerZoomReset => {
+                self.viewer_scale = 1.25;
+                self.render_current_viewer_page()
+            }
+            Message::ViewerPageRendered(res) => {
+                match res {
+                    Ok(page_data) => {
+                        self.viewer_current_page = page_data.page_number;
+                        self.viewer_total_pages = page_data.total_pages;
+
+                        let handle = image::Handle::from_rgba(
+                            page_data.width,
+                            page_data.height,
+                            page_data.rgba_bytes,
+                        );
+                        self.viewer_image_handle = Some(handle);
+                        self.status = OperationStatus::Idle;
+                    }
+                    Err(e) => {
+                        self.status = OperationStatus::Error(format!("Gagal membaca PDF: {}", e));
+                    }
+                }
                 Task::none()
             }
 
@@ -392,6 +508,7 @@ impl App {
         let status_bar = self.view_status();
 
         let content: Element<'_, Message> = match self.active_tab {
+            ActiveTab::View => self.view_viewer_tab(),
             ActiveTab::Merge => self.view_merge_tab(),
             ActiveTab::Split => self.view_split_tab(),
             ActiveTab::Compress => self.view_compress_tab(),
@@ -418,40 +535,56 @@ impl App {
 
     fn view_header(&self) -> Element<'_, Message> {
         let app_badge = container(
-            text("PDF TOOLBOX")
-                .size(11)
+            text("PURE RUST • ULTRA-LIGHT")
+                .size(10)
                 .style(text::primary)
         )
-        .padding(Padding::from([4, 10]))
+        .padding(Padding::from([3, 8]))
         .style(container::rounded_box);
 
         let title_col = column![
             row![
-                text("PD").size(26).font(BOLD),
-                text(" - Desktop PDF Utility").size(20),
-                Space::new().width(12),
+                text("PD").size(24).font(BOLD),
+                text(" - Desktop PDF Utility & Reader").size(18),
+                Space::new().width(10),
                 app_badge
             ]
             .align_y(Alignment::Center),
-            text("Aplikasi desktop cepat, aman, dan offline-first untuk manipulasi dokumen PDF")
-                .size(13)
+            text("PDF Viewer teringan di muka bumi dan utilitas manipulasi dokumen 100% offline")
+                .size(12)
                 .style(text::secondary)
         ]
-        .spacing(4);
+        .spacing(3);
 
         container(title_col)
             .width(Length::Fill)
-            .padding(Padding::from([16, 20]))
+            .padding(Padding::from([12, 20]))
             .into()
     }
 
     fn view_tabs(&self) -> Element<'_, Message> {
+        let view_btn = button(
+            row![
+                text("👁️"),
+                text("View PDF").size(13).font(BOLD)
+            ]
+            .spacing(6)
+            .align_y(Alignment::Center)
+        )
+        .style(if self.active_tab == ActiveTab::View {
+            button::primary
+        } else {
+            button::secondary
+        })
+        .on_press(Message::SwitchTab(ActiveTab::View))
+        .padding(Padding::from([8, 16]));
+
         let merge_btn = button(
             row![
                 text("📑"),
-                text("Merge PDF").size(14).font(BOLD)
+                text("Merge PDF").size(13).font(BOLD)
             ]
-            .spacing(8)
+            .spacing(6)
             .align_y(Alignment::Center)
         )
         .style(if self.active_tab == ActiveTab::Merge {
@@ -460,14 +593,14 @@ impl App {
             button::secondary
         })
         .on_press(Message::SwitchTab(ActiveTab::Merge))
-        .padding(Padding::from([10, 18]));
+        .padding(Padding::from([8, 16]));
 
         let split_btn = button(
             row![
                 text("✂️"),
-                text("Split PDF").size(14).font(BOLD)
+                text("Split PDF").size(13).font(BOLD)
             ]
-            .spacing(8)
+            .spacing(6)
             .align_y(Alignment::Center)
         )
         .style(if self.active_tab == ActiveTab::Split {
@@ -476,14 +609,14 @@ impl App {
             button::secondary
         })
         .on_press(Message::SwitchTab(ActiveTab::Split))
-        .padding(Padding::from([10, 18]));
+        .padding(Padding::from([8, 16]));
 
         let compress_btn = button(
             row![
                 text("🗜️"),
-                text("Compress PDF").size(14).font(BOLD)
+                text("Compress PDF").size(13).font(BOLD)
             ]
-            .spacing(8)
+            .spacing(6)
             .align_y(Alignment::Center)
         )
         .style(if self.active_tab == ActiveTab::Compress {
@@ -492,10 +625,10 @@ impl App {
             button::secondary
         })
         .on_press(Message::SwitchTab(ActiveTab::Compress))
-        .padding(Padding::from([10, 18]));
+        .padding(Padding::from([8, 16]));
 
-        let tabs_row = row![merge_btn, split_btn, compress_btn]
-            .spacing(12)
+        let tabs_row = row![view_btn, merge_btn, split_btn, compress_btn]
+            .spacing(10)
             .align_y(Alignment::Center);
 
         container(tabs_row)
@@ -511,29 +644,29 @@ impl App {
                 let bar = progress_bar(0.0..=100.0, 75.0);
                 let content = column![
                     row![
-                        text("⏳").size(16),
-                        text(msg).size(14).font(BOLD)
+                        text("⏳").size(15),
+                        text(msg).size(13).font(BOLD)
                     ]
                     .spacing(8)
                     .align_y(Alignment::Center),
                     bar
                 ]
-                .spacing(8);
+                .spacing(6);
 
                 container(content)
                     .width(Length::Fill)
-                    .padding(Padding::from([10, 16]))
+                    .padding(Padding::from([8, 14]))
                     .style(container::rounded_box)
                     .into()
             }
             OperationStatus::Success(msg) => {
-                let dismiss_btn = button(text("✕").size(12))
+                let dismiss_btn = button(text("✕").size(11))
                     .style(button::text)
                     .on_press(Message::DismissStatus);
 
                 let content = row![
-                    text("✅").size(16),
-                    text(msg).size(14).style(text::success),
+                    text("✅").size(15),
+                    text(msg).size(13).style(text::success),
                     Space::new().width(Length::Fill),
                     dismiss_btn
                 ]
@@ -542,18 +675,18 @@ impl App {
 
                 container(content)
                     .width(Length::Fill)
-                    .padding(Padding::from([10, 16]))
+                    .padding(Padding::from([8, 14]))
                     .style(container::rounded_box)
                     .into()
             }
             OperationStatus::Error(msg) => {
-                let dismiss_btn = button(text("✕").size(12))
+                let dismiss_btn = button(text("✕").size(11))
                     .style(button::text)
                     .on_press(Message::DismissStatus);
 
                 let content = row![
-                    text("⚠️").size(16),
-                    text(msg).size(14).style(text::danger),
+                    text("⚠️").size(15),
+                    text(msg).size(13).style(text::danger),
                     Space::new().width(Length::Fill),
                     dismiss_btn
                 ]
@@ -562,11 +695,162 @@ impl App {
 
                 container(content)
                     .width(Length::Fill)
-                    .padding(Padding::from([10, 16]))
+                    .padding(Padding::from([8, 14]))
                     .style(container::rounded_box)
                     .into()
             }
         }
+    }
+
+    // --- VIEWER TAB VIEW (PDF READER) ---
+    fn view_viewer_tab(&self) -> Element<'_, Message> {
+        let is_processing = matches!(self.status, OperationStatus::Processing(_));
+
+        let open_btn = button(
+            row![
+                text("📂"),
+                text("Buka PDF").size(13)
+            ]
+            .spacing(6)
+            .align_y(Alignment::Center)
+        )
+        .style(button::primary)
+        .padding(Padding::from([7, 14]));
+
+        let open_btn = if is_processing {
+            open_btn
+        } else {
+            open_btn.on_press(Message::PickViewerFile)
+        };
+
+        let prev_btn = button(text("◀ Prev").size(12))
+            .style(button::secondary)
+            .padding(Padding::from([6, 12]));
+        let prev_btn = if self.viewer_file.is_some() && self.viewer_current_page > 1 && !is_processing {
+            prev_btn.on_press(Message::ViewerPrevPage)
+        } else {
+            prev_btn
+        };
+
+        let next_btn = button(text("Next ▶").size(12))
+            .style(button::secondary)
+            .padding(Padding::from([6, 12]));
+        let next_btn = if self.viewer_file.is_some() && self.viewer_current_page < self.viewer_total_pages && !is_processing {
+            next_btn.on_press(Message::ViewerNextPage)
+        } else {
+            next_btn
+        };
+
+        let zoom_in_btn = button(text("🔍 +").size(12))
+            .style(button::secondary)
+            .padding(Padding::from([6, 10]));
+        let zoom_in_btn = if self.viewer_file.is_some() && !is_processing {
+            zoom_in_btn.on_press(Message::ViewerZoomIn)
+        } else {
+            zoom_in_btn
+        };
+
+        let zoom_out_btn = button(text("🔍 -").size(12))
+            .style(button::secondary)
+            .padding(Padding::from([6, 10]));
+        let zoom_out_btn = if self.viewer_file.is_some() && !is_processing {
+            zoom_out_btn.on_press(Message::ViewerZoomOut)
+        } else {
+            zoom_out_btn
+        };
+
+        let zoom_reset_btn = button(text(format!("{:.0}%", self.viewer_scale * 100.0)).size(12))
+            .style(button::secondary)
+            .padding(Padding::from([6, 10]));
+        let zoom_reset_btn = if self.viewer_file.is_some() && !is_processing {
+            zoom_reset_btn.on_press(Message::ViewerZoomReset)
+        } else {
+            zoom_reset_btn
+        };
+
+        let page_indicator = if self.viewer_total_pages > 0 {
+            format!("Halaman {} / {}", self.viewer_current_page, self.viewer_total_pages)
+        } else {
+            "Tidak ada file".to_string()
+        };
+
+        let file_name_text = self.viewer_file.as_ref()
+            .and_then(|p| p.file_name())
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| "Belum ada dokumen yang dibuka".to_string());
+
+        let viewer_toolbar = row![
+            open_btn,
+            Space::new().width(10),
+            text(file_name_text).size(13).font(BOLD),
+            Space::new().width(Length::Fill),
+            prev_btn,
+            container(text(page_indicator).size(12).font(BOLD))
+                .padding(Padding::from([4, 10]))
+                .style(container::rounded_box),
+            next_btn,
+            Space::new().width(12),
+            zoom_out_btn,
+            zoom_reset_btn,
+            zoom_in_btn
+        ]
+        .spacing(8)
+        .align_y(Alignment::Center);
+
+        let canvas_view: Element<'_, Message> = if let Some(ref handle) = self.viewer_image_handle {
+            let page_img = image(handle.clone());
+            let paper_container = container(page_img)
+                .padding(Padding::from(10))
+                .style(container::rounded_box);
+
+            scrollable(
+                container(paper_container)
+                    .width(Length::Fill)
+                    .center_x(Length::Fill)
+                    .padding(Padding::from(16))
+            )
+            .height(Length::Fill)
+            .into()
+        } else {
+            container(
+                column![
+                    text("📖").size(48),
+                    text("PDF Reader Teringan di Muka Bumi").size(17).font(BOLD),
+                    text("Buka file dokumen PDF apa saja untuk membaca secara instan.").size(13).style(text::secondary),
+                    text("Ditenagai oleh rasterizer Pure-Rust (hayro) tanpa dependency C/C++ berat dan tanpa runtime Electron.")
+                        .size(11)
+                        .style(text::secondary),
+                    Space::new().height(10),
+                    button(
+                        row![
+                            text("📂"),
+                            text("Pilih File PDF untuk Dibaca").size(14).font(BOLD)
+                        ]
+                        .spacing(8)
+                        .align_y(Alignment::Center)
+                    )
+                    .style(button::primary)
+                    .padding(Padding::from([10, 20]))
+                    .on_press(Message::PickViewerFile)
+                ]
+                .spacing(8)
+                .align_x(Alignment::Center)
+            )
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .center_x(Length::Fill)
+            .center_y(Length::Fill)
+            .style(container::rounded_box)
+            .into()
+        };
+
+        column![
+            viewer_toolbar,
+            rule::horizontal(1),
+            canvas_view
+        ]
+        .spacing(12)
+        .into()
     }
 
     fn view_merge_tab(&self) -> Element<'_, Message> {

@@ -11,28 +11,33 @@
 ---
 
 ## 1. Project Overview
-Membangun aplikasi desktop *cross-platform* berperforma tinggi menggunakan **Rust** dan pustaka GUI **Iced**. Aplikasi ini dirancang untuk bekerja secara lokal (offline-first) guna memproses dokumen PDF, terinspirasi dari fungsionalitas inti [iLovePDF](https://www.ilovepdf.com/).
+Membangun aplikasi desktop *cross-platform* berperforma tinggi menggunakan **Rust** dan pustaka GUI **Iced**. Aplikasi ini dirancang untuk bekerja secara lokal (*offline-first*) guna membaca serta memproses dokumen PDF, terinspirasi dari fungsionalitas inti [iLovePDF](https://www.ilovepdf.com/) namun dengan pembaca PDF murni tercepat dan teringan di muka bumi (*100% Pure-Rust, zero C++ bloat*).
 
 ## 2. Target Platforms & Tech Stack
 * **Language:** Rust (Stable)
-* **GUI Framework:** `iced` (menggunakan arsitektur bergaya *The Elm Architecture*)
+* **GUI Framework:** `iced` (menggunakan arsitektur fungsional *The Elm Architecture*)
 * **File Dialog & OS Integration:** `rfd` (Native File Dialogs)
-* **PDF Processing Crates:** 
-  * `lopdf` (untuk manipulasi struktur, *Merge*, *Split*)
-  * `pdfium-render` (untuk *Rendering* halaman, konversi PDF ke Gambar, ekstraksi teks)
+* **PDF Engine & Processing Crates:** 
+  * `hayro` (Engine render PDF 100% *pure-Rust*, SIMD-accelerated CPU rasterizer — bebas dependensi eksternal C++ / `pdfium.dll`, konsumsi memori sangat minimal)
+  * `lopdf` (untuk manipulasi struktur PDF, *Merge*, *Split*, *Compress*)
 * **Target OS:** Windows, Linux, macOS
 
 ---
 
 ## 3. Core Features (Minimum Viable Product / MVP)
-Fokus awal pengembangan dibagi menjadi tiga fitur dasar yang paling sering digunakan:
+PD menggabungkan reader PDF ultra-ringan dengan alat manipulasi dokumen esensial:
 
-1. **Merge PDF:**
+1. **View PDF (Ultra-Lightweight Pure-Rust Reader):**
+   * Membaca dan menampilkan dokumen PDF secara instan dengan *memory & CPU footprint* teringan di muka bumi.
+   * Ditenagai 100% Rust murni tanpa dependensi runtime C++ eksternal (`pdfium.dll` atau Electron).
+   * Navigasi halaman cepat (*Next Page*, *Previous Page*, dan indikator posisi halaman).
+   * Kontrol pembesaran dinamis (*Zoom In*, *Zoom Out*, dan *Reset 100%*).
+2. **Merge PDF:**
    * Menggabungkan beberapa file PDF terpilih menjadi satu dokumen utuh.
    * Mendukung pengaturan urutan file (*reorder*).
-2. **Split PDF:**
+3. **Split PDF:**
    * Memecah file PDF berdasarkan rentang halaman (*page ranges*) tertentu menjadi dokumen terpisah.
-3. **Compress PDF:**
+4. **Compress PDF:**
    * Mengurangi ukuran file PDF dengan optimasi objek internal (*object streams*).
 
 ---

@@ -1,10 +1,12 @@
 pub mod compressor;
 pub mod merger;
 pub mod splitter;
+pub mod viewer;
 
 pub use compressor::{compress_pdf, CompressionReport};
 pub use merger::merge_pdfs;
 pub use splitter::{extract_pages_to_file, get_pdf_page_count, parse_page_ranges};
+pub use viewer::{render_page_to_rgba, PageViewData};
 
 #[cfg(test)]
 mod tests {
@@ -85,7 +87,6 @@ mod tests {
         assert_eq!(get_pdf_page_count(&merged_path).unwrap(), 5);
 
         // 3. Test Split / Extract
-        // Extract pages 1 and 3 from the 5-page merged PDF
         let pages_to_keep = vec![1, 3];
         let split_count = extract_pages_to_file(&merged_path, &pages_to_keep, &split_path).unwrap();
         assert_eq!(split_count, 2);
@@ -95,6 +96,14 @@ mod tests {
         let report = compress_pdf(&merged_path, &compressed_path).unwrap();
         assert!(compressed_path.exists());
         assert!(report.compressed_size_bytes > 0);
+
+        // 5. Test Pure-Rust Ultra-Light Page Renderer
+        let view_data = render_page_to_rgba(&merged_path, 1, 1.0).unwrap();
+        assert_eq!(view_data.page_number, 1);
+        assert_eq!(view_data.total_pages, 5);
+        assert!(view_data.width > 0);
+        assert!(view_data.height > 0);
+        assert!(!view_data.rgba_bytes.is_empty());
 
         // Clean up temporary test files
         let _ = std::fs::remove_dir_all(&temp_dir);

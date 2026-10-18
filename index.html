@@ -3,13 +3,13 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PD - Desktop PDF Utility Application (Rust + Iced)</title>
-  <meta name="description" content="Aplikasi desktop cross-platform cepat, aman, dan offline-first untuk menggabungkan, memecah, dan mengompres dokumen PDF dengan performa tinggi berbasis Rust dan Iced.">
-  <meta name="keywords" content="PDF utility, merge PDF, split PDF, compress PDF, Rust, Iced GUI, desktop app, offline PDF">
+  <title>PD - PDF Reader Teringan di Muka Bumi & Desktop Utility (Rust + Iced)</title>
+  <meta name="description" content="PDF reader tercepat dan teringan di muka bumi berbasis 100% Pure-Rust + Iced. Offline-first, tanpa dependency C++ external, serta dilengkapi utility Merge, Split, dan Compress.">
+  <meta name="keywords" content="PDF reader teringan, fastest PDF viewer, PDF utility, merge PDF, split PDF, compress PDF, Rust, Iced GUI, desktop app, offline PDF">
   
   <!-- Open Graph -->
-  <meta property="og:title" content="PD - Desktop PDF Utility Application">
-  <meta property="og:description" content="Solusi desktop offline-first untuk manipulasi dokumen PDF: Merge, Split, dan Compress dengan performa native Rust.">
+  <meta property="og:title" content="PD - PDF Reader Teringan di Muka Bumi & Desktop Utility">
+  <meta property="og:description" content="100% Pure-Rust PDF Reader tercepat & teringan di muka bumi. Offline-first, zero-bloat, dilengkapi fitur Merge, Split, dan Compress.">
   <meta property="og:url" content="https://if.co.id/pd/">
   <meta property="og:type" content="website">
 
@@ -563,11 +563,11 @@
   <main>
     <section class="hero container">
       <div class="pill-badge">
-        <span>⚡</span> 100% Offline-First • Bebas Batasan Ukuran • Rust & Iced
+        <span>⚡</span> 100% Pure-Rust • PDF Reader Teringan di Muka Bumi • Offline-First
       </div>
-      <h1>Manipulasi PDF Cepat & Aman<br>Langsung di Komputer Anda</h1>
+      <h1>PDF Reader Teringan di Dunia<br>& Utilitas Desktop Cepat</h1>
       <p>
-        Gabungkan, pecah, dan kompres dokumen PDF secara instan tanpa mengunggah file rahasia ke server luar. Terinspirasi dari fungsionalitas inti iLovePDF dengan performa native.
+        Buka dokumen seketika tanpa lag atau bloatware. Baca, gabungkan, pecah, dan kompres dokumen PDF langsung di komputer Anda dengan performa native Rust — 100% offline, hemat RAM, dan aman.
       </p>
 
       <div class="cta-group">
@@ -577,7 +577,7 @@
             <polyline points="7 10 12 15 17 10"></polyline>
             <line x1="12" y1="15" x2="12" y2="3"></line>
           </svg>
-          Download Sekarang (v0.1.0)
+          Download Sekarang (v0.1.1)
         </a>
         <a href="https://github.com/ifcoid/pd" target="_blank" rel="noopener noreferrer" class="btn-secondary">
           Lihat Source Code
@@ -609,29 +609,29 @@
         </div>
         <div class="preview-body">
           <div class="ui-tabs">
-            <div class="ui-tab-btn ui-tab-active">📑 Merge PDF</div>
+            <div class="ui-tab-btn ui-tab-active">📖 View PDF</div>
+            <div class="ui-tab-btn ui-tab-inactive">📑 Merge PDF</div>
             <div class="ui-tab-btn ui-tab-inactive">✂️ Split PDF</div>
             <div class="ui-tab-btn ui-tab-inactive">🗜️ Compress PDF</div>
           </div>
-          <div class="file-item-card">
-            <div class="file-item-info">
-              <span class="badge-index">#1</span>
-              <div>
-                <strong style="font-size: 14px;">Laporan_Keuangan_Q1.pdf</strong>
-                <div style="font-size: 11px; color: var(--text-muted);">2.4 MB • 14 Halaman</div>
-              </div>
+          
+          <!-- Reader Toolbar Preview -->
+          <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.3); padding: 10px 16px; border-radius: 8px; margin-bottom: 12px;">
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <span style="font-size: 13px; font-weight: 700; color: #7aa2f7;">📄 Proposal_Kerja_2026.pdf</span>
+              <span style="font-size: 11px; color: #73daca; background: rgba(115,218,202,0.15); padding: 2px 8px; border-radius: 4px;">100% Pure-Rust</span>
             </div>
-            <span style="font-size: 12px; color: #73daca;">Siap digabung</span>
+            <div style="display: flex; gap: 12px; align-items: center; font-size: 12px; color: var(--text-muted);">
+              <span>◀ Halaman 1 / 18 ▶</span>
+              <span style="background: rgba(255,255,255,0.08); padding: 2px 8px; border-radius: 4px;">Zoom: 100%</span>
+            </div>
           </div>
-          <div class="file-item-card">
-            <div class="file-item-info">
-              <span class="badge-index">#2</span>
-              <div>
-                <strong style="font-size: 14px;">Lampiran_Kontrak_Final.pdf</strong>
-                <div style="font-size: 11px; color: var(--text-muted);">1.1 MB • 6 Halaman</div>
-              </div>
-            </div>
-            <span style="font-size: 12px; color: #73daca;">Siap digabung</span>
+
+          <div style="background: #ffffff; border-radius: 6px; padding: 24px; color: #1e293b; text-align: left; box-shadow: 0 4px 20px rgba(0,0,0,0.5); min-height: 120px; display: flex; flex-direction: column; justify-content: center;">
+            <div style="height: 12px; width: 60%; background: #334155; border-radius: 3px; margin-bottom: 10px;"></div>
+            <div style="height: 8px; width: 90%; background: #94a3b8; border-radius: 3px; margin-bottom: 6px;"></div>
+            <div style="height: 8px; width: 85%; background: #cbd5e1; border-radius: 3px; margin-bottom: 6px;"></div>
+            <div style="height: 8px; width: 75%; background: #e2e8f0; border-radius: 3px;"></div>
           </div>
         </div>
       </div>
@@ -640,11 +640,19 @@
     <!-- Features Section -->
     <section class="features-section container" id="features">
       <div class="section-title">
-        <h2>Tiga Fitur Inti yang Paling Anda Butuhkan</h2>
-        <p>Dirancang sederhana, berkecepatan tinggi, dan 100% offline demi keamanan data dokumen Anda.</p>
+        <h2>Fitur Unggulan PD: Reader Teringan & Utilitas PDF Lengkap</h2>
+        <p>Dirancang sederhana, berkecepatan tinggi, dan 100% offline demi keamanan total dokumen Anda.</p>
       </div>
 
       <div class="features-grid">
+        <div class="feature-card" style="border-color: rgba(122, 162, 247, 0.4); background: rgba(33, 38, 45, 0.95);">
+          <span class="feature-icon">📖</span>
+          <h3>View PDF (Reader Teringan di Muka Bumi)</h3>
+          <p>
+            Membuka dan membaca dokumen PDF secara instan tanpa runtime berat (100% Rust murni, zero C++ / Electron). Navigasi halaman cepat, kontrol zoom halus, dan konsumsi memori paling hemat di muka bumi.
+          </p>
+        </div>
+
         <div class="feature-card">
           <span class="feature-icon">📑</span>
           <h3>Merge PDF (Penggabungan)</h3>
@@ -679,17 +687,9 @@
 
         <div class="feature-card">
           <span class="feature-icon">🚀</span>
-          <h3>Performa Native Rust</h3>
+          <h3>Performa Native Pure-Rust</h3>
           <p>
-            Aplikasi desktop sejati tanpa overhead memory Electron. Ditenagai oleh Rust dan framework GUI Iced yang ringan, responsif, dan hemat daya.
-          </p>
-        </div>
-
-        <div class="feature-card">
-          <span class="feature-icon">🌐</span>
-          <h3>Dukungan Lintas Platform</h3>
-          <p>
-            Tersedia untuk sistem operasi Windows (x64), Linux (x86_64), macOS Apple Silicon (M1/M2/M3), dan macOS Intel dengan installer instan.
+            Aplikasi desktop sejati tanpa overhead memory Electron. Ditenagai oleh engine CPU rasterizer SIMD dan framework Iced yang ringan, responsif, dan hemat daya.
           </p>
         </div>
       </div>
@@ -699,7 +699,7 @@
     <section class="downloads-section container" id="downloads">
       <div class="section-title">
         <h2>Download Rilis Resmi</h2>
-        <p>Unduh binary siap pakai untuk sistem operasi Anda (Versi v0.1.0):</p>
+        <p>Unduh binary siap pakai untuk sistem operasi Anda (Versi v0.1.1):</p>
       </div>
 
       <div class="download-grid">
@@ -707,7 +707,7 @@
           <div class="os-icon">🪟</div>
           <h4>Windows</h4>
           <div class="os-arch">x86_64 (.zip)</div>
-          <a href="https://github.com/ifcoid/pd/releases/download/v0.1.0/pd-windows-x86_64.zip" class="download-btn-sm">
+          <a href="https://github.com/ifcoid/pd/releases/download/v0.1.1/pd-windows-x86_64.zip" class="download-btn-sm">
             Download ZIP
           </a>
         </div>
@@ -716,7 +716,7 @@
           <div class="os-icon">🐧</div>
           <h4>Linux</h4>
           <div class="os-arch">x86_64 (.tar.gz)</div>
-          <a href="https://github.com/ifcoid/pd/releases/download/v0.1.0/pd-linux-x86_64.tar.gz" class="download-btn-sm">
+          <a href="https://github.com/ifcoid/pd/releases/download/v0.1.1/pd-linux-x86_64.tar.gz" class="download-btn-sm">
             Download tar.gz
           </a>
         </div>
@@ -725,7 +725,7 @@
           <div class="os-icon">🍎</div>
           <h4>macOS (Apple Silicon)</h4>
           <div class="os-arch">M1 / M2 / M3 (.tar.gz)</div>
-          <a href="https://github.com/ifcoid/pd/releases/download/v0.1.0/pd-macos-aarch64.tar.gz" class="download-btn-sm">
+          <a href="https://github.com/ifcoid/pd/releases/download/v0.1.1/pd-macos-aarch64.tar.gz" class="download-btn-sm">
             Download tar.gz
           </a>
         </div>
@@ -734,7 +734,7 @@
           <div class="os-icon">🍏</div>
           <h4>macOS (Intel)</h4>
           <div class="os-arch">x86_64 (.tar.gz)</div>
-          <a href="https://github.com/ifcoid/pd/releases/download/v0.1.0/pd-macos-x86_64.tar.gz" class="download-btn-sm">
+          <a href="https://github.com/ifcoid/pd/releases/download/v0.1.1/pd-macos-x86_64.tar.gz" class="download-btn-sm">
             Download tar.gz
           </a>
         </div>
