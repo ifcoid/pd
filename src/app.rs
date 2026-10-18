@@ -5,8 +5,9 @@ use iced::widget::{
 use iced::{Alignment, Element, Font, Length, Padding, Task, Theme};
 
 use crate::pdf_ops::{
-    compress_pdf, extract_pages_to_file, get_pdf_page_count, merge_pdfs, render_page_to_rgba,
-    CompressionReport, PageViewData,
+    compress_pdf, export_pdf_page_to_image, extract_pages_to_file, get_pdf_page_count,
+    images_to_pdf, merge_pdfs, render_page_to_rgba, CompressionReport, ExportImageFormat,
+    PageViewData,
 };
 
 const BOLD: Font = Font {
@@ -17,6 +18,7 @@ const BOLD: Font = Font {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ActiveTab {
     View,
+    ImagesToPdf,
     Merge,
     Split,
     Compress,
@@ -40,6 +42,9 @@ pub struct App {
     pub viewer_total_pages: usize,
     pub viewer_scale: f32,
     pub viewer_image_handle: Option<image::Handle>,
+
+    // Images to PDF Tab State
+    pub image_files: Vec<PathBuf>,
 
     // Merge Tab State
     pub merge_files: Vec<PathBuf>,
@@ -67,6 +72,19 @@ pub enum Message {
     ViewerZoomOut,
     ViewerZoomReset,
     ViewerPageRendered(Result<PageViewData, String>),
+    ViewerExportPagePng,
+    ViewerExportPageJpg,
+    ViewerExportCompleted(Result<PathBuf, String>),
+
+    // Images to PDF Actions
+    PickImageFiles,
+    ImageFilesSelected(Option<Vec<PathBuf>>),
+    RemoveImageFile(usize),
+    MoveImageFileUp(usize),
+    MoveImageFileDown(usize),
+    ClearImageFiles,
+    RunImagesToPdf,
+    ImagesToPdfCompleted(Result<usize, String>),
 
     // Merge Actions
     PickMergeFiles,
@@ -111,6 +129,7 @@ impl App {
             viewer_total_pages: 0,
             viewer_scale: 1.25,
             viewer_image_handle: None,
+            image_files: Vec::new(),
             merge_files: Vec::new(),
             split_file: None,
             split_total_pages: 0,
@@ -246,6 +265,177 @@ impl App {
                     }
                     Err(e) => {
                         self.status = OperationStatus::Error(format!("Gagal membaca PDF: {}", e));
+                    }
+                }
+                Task::none()
+            }
+            Message::ViewerExportPagePng | Message::ViewerExportPageJpg => {
+                let format = if matches!(message, Message::ViewerExportPagePng) {
+                    ExportImageFormat::Png
+                } else {
+                    ExportImageFormat::Jpeg
+                };
+                let file = match &self.viewer_file {
+                    Some(f) => f.clone(),
+                    None => return Task::none(),
+                };
+                let page = self.viewer_current_page;
+                let ext = format.extension();
+                let default_name = format!(
+                    "{}_page_{}.{}",
+                    file.file_stem().and_then(|s| s.to_str()).unwrap_or("document"),
+                    page,
+                    ext
+                );
+                self.status = OperationStatus::Processing(format!(
+                    "Mengekspor halaman {} ke {}...",
+                    page,
+                    ext.to_uppercase()
+                ));
+
+                Task::future(async move {
+                    let filter_name = if format == ExportImageFormat::Png {
+                        "PNG Image (*.png)"
+                    } else {
+                        "JPEG Image (*.jpg)"
+                    };
+                    let dest = rfd::AsyncFileDialog::new()
+                        .add_filter(filter_name, &[ext])
+                        .set_file_name(&default_name)
+                        .set_title("Simpan Halaman Sebagai Gambar")
+                        .save_file()
+                        .await;
+
+                    if let Some(handle) = dest {
+                        let out_path = handle.path().to_path_buf();
+                        match export_pdf_page_to_image(&file, page, &out_path, format, 2.0) {
+                            Ok(path) => Message::ViewerExportCompleted(Ok(path)),
+                            Err(e) => Message::ViewerExportCompleted(Err(e.to_string())),
+                        }
+                    } else {
+                        Message::ViewerExportCompleted(Err("Ekspor gambar dibatalkan oleh pengguna.".to_string()))
+                    }
+                })
+            }
+            Message::ViewerExportCompleted(res) => {
+                match res {
+                    Ok(path) => {
+                        let name = path.file_name().and_then(|s| s.to_str()).unwrap_or("image");
+                        self.status = OperationStatus::Success(format!(
+                            "Halaman berhasil diekspor ke: {}",
+                            name
+                        ));
+                    }
+                    Err(msg) => {
+                        if msg.contains("dibatalkan") {
+                            self.status = OperationStatus::Idle;
+                        } else {
+                            self.status = OperationStatus::Error(format!("Gagal mengekspor gambar: {}", msg));
+                        }
+                    }
+                }
+                Task::none()
+            }
+
+            // --- IMAGES TO PDF ACTIONS ---
+            Message::PickImageFiles => {
+                Task::future(async move {
+                    let files = rfd::AsyncFileDialog::new()
+                        .add_filter(
+                            "Image files (*.png, *.jpg, *.jpeg, *.webp, *.bmp)",
+                            &["png", "jpg", "jpeg", "webp", "bmp"],
+                        )
+                        .set_title("Pilih file gambar untuk dijadikan PDF")
+                        .pick_files()
+                        .await;
+
+                    let paths = files.map(|handles| {
+                        handles.into_iter().map(|h| h.path().to_path_buf()).collect()
+                    });
+                    Message::ImageFilesSelected(paths)
+                })
+            }
+            Message::ImageFilesSelected(files_opt) => {
+                if let Some(new_files) = files_opt {
+                    for f in new_files {
+                        if !self.image_files.contains(&f) {
+                            self.image_files.push(f);
+                        }
+                    }
+                    self.status = OperationStatus::Idle;
+                }
+                Task::none()
+            }
+            Message::RemoveImageFile(idx) => {
+                if idx < self.image_files.len() {
+                    self.image_files.remove(idx);
+                }
+                Task::none()
+            }
+            Message::MoveImageFileUp(idx) => {
+                if idx > 0 && idx < self.image_files.len() {
+                    self.image_files.swap(idx, idx - 1);
+                }
+                Task::none()
+            }
+            Message::MoveImageFileDown(idx) => {
+                if idx + 1 < self.image_files.len() {
+                    self.image_files.swap(idx, idx + 1);
+                }
+                Task::none()
+            }
+            Message::ClearImageFiles => {
+                self.image_files.clear();
+                self.status = OperationStatus::Idle;
+                Task::none()
+            }
+            Message::RunImagesToPdf => {
+                if self.image_files.is_empty() {
+                    self.status = OperationStatus::Error(
+                        "Pilih minimal satu file gambar untuk dibuat menjadi PDF.".to_string(),
+                    );
+                    return Task::none();
+                }
+
+                self.status =
+                    OperationStatus::Processing("Mengonversi kumpulan gambar menjadi PDF...".to_string());
+                let images = self.image_files.clone();
+
+                Task::future(async move {
+                    let dest = rfd::AsyncFileDialog::new()
+                        .add_filter("PDF files", &["pdf"])
+                        .set_file_name("images.pdf")
+                        .set_title("Simpan File PDF dari Gambar")
+                        .save_file()
+                        .await;
+
+                    if let Some(handle) = dest {
+                        let path = handle.path().to_path_buf();
+                        match images_to_pdf(&images, &path) {
+                            Ok(page_count) => Message::ImagesToPdfCompleted(Ok(page_count)),
+                            Err(e) => Message::ImagesToPdfCompleted(Err(e.to_string())),
+                        }
+                    } else {
+                        Message::ImagesToPdfCompleted(Err(
+                            "Penyimpanan PDF dibatalkan oleh pengguna.".to_string(),
+                        ))
+                    }
+                })
+            }
+            Message::ImagesToPdfCompleted(res) => {
+                match res {
+                    Ok(pages) => {
+                        self.status = OperationStatus::Success(format!(
+                            "Berhasil membuat PDF! {} halaman gambar berhasil digabungkan.",
+                            pages
+                        ));
+                    }
+                    Err(msg) => {
+                        if msg.contains("dibatalkan") {
+                            self.status = OperationStatus::Idle;
+                        } else {
+                            self.status = OperationStatus::Error(format!("Gagal: {}", msg));
+                        }
                     }
                 }
                 Task::none()
@@ -533,6 +723,7 @@ impl App {
 
         let content: Element<'_, Message> = match self.active_tab {
             ActiveTab::View => self.view_viewer_tab(),
+            ActiveTab::ImagesToPdf => self.view_images_to_pdf_tab(),
             ActiveTab::Merge => self.view_merge_tab(),
             ActiveTab::Split => self.view_split_tab(),
             ActiveTab::Compress => self.view_compress_tab(),
@@ -603,6 +794,22 @@ impl App {
         .on_press(Message::SwitchTab(ActiveTab::View))
         .padding(Padding::from([8, 16]));
 
+        let img_to_pdf_btn = button(
+            row![
+                text("🖼️"),
+                text("Gambar ke PDF").size(13).font(BOLD)
+            ]
+            .spacing(6)
+            .align_y(Alignment::Center)
+        )
+        .style(if self.active_tab == ActiveTab::ImagesToPdf {
+            button::primary
+        } else {
+            button::secondary
+        })
+        .on_press(Message::SwitchTab(ActiveTab::ImagesToPdf))
+        .padding(Padding::from([8, 16]));
+
         let merge_btn = button(
             row![
                 text("📑"),
@@ -651,7 +858,7 @@ impl App {
         .on_press(Message::SwitchTab(ActiveTab::Compress))
         .padding(Padding::from([8, 16]));
 
-        let tabs_row = row![view_btn, merge_btn, split_btn, compress_btn]
+        let tabs_row = row![view_btn, img_to_pdf_btn, merge_btn, split_btn, compress_btn]
             .spacing(10)
             .align_y(Alignment::Center);
 
@@ -792,6 +999,38 @@ impl App {
             zoom_reset_btn
         };
 
+        let export_png_btn = button(
+            row![
+                text("💾"),
+                text("PNG").size(12).font(BOLD)
+            ]
+            .spacing(4)
+            .align_y(Alignment::Center)
+        )
+        .style(button::secondary)
+        .padding(Padding::from([6, 10]));
+        let export_png_btn = if self.viewer_file.is_some() && !is_processing {
+            export_png_btn.on_press(Message::ViewerExportPagePng)
+        } else {
+            export_png_btn
+        };
+
+        let export_jpg_btn = button(
+            row![
+                text("💾"),
+                text("JPG").size(12).font(BOLD)
+            ]
+            .spacing(4)
+            .align_y(Alignment::Center)
+        )
+        .style(button::secondary)
+        .padding(Padding::from([6, 10]));
+        let export_jpg_btn = if self.viewer_file.is_some() && !is_processing {
+            export_jpg_btn.on_press(Message::ViewerExportPageJpg)
+        } else {
+            export_jpg_btn
+        };
+
         let page_indicator = if self.viewer_total_pages > 0 {
             format!("Halaman {} / {}", self.viewer_current_page, self.viewer_total_pages)
         } else {
@@ -816,7 +1055,10 @@ impl App {
             Space::new().width(12),
             zoom_out_btn,
             zoom_reset_btn,
-            zoom_in_btn
+            zoom_in_btn,
+            Space::new().width(12),
+            export_png_btn,
+            export_jpg_btn
         ]
         .spacing(8)
         .align_y(Alignment::Center);
@@ -872,6 +1114,175 @@ impl App {
             viewer_toolbar,
             rule::horizontal(1),
             canvas_view
+        ]
+        .spacing(12)
+        .into()
+    }
+
+    // --- IMAGES TO PDF TAB VIEW ---
+    fn view_images_to_pdf_tab(&self) -> Element<'_, Message> {
+        let is_processing = matches!(self.status, OperationStatus::Processing(_));
+
+        let pick_btn = button(
+            row![
+                text("➕"),
+                text("Tambah Gambar").size(14)
+            ]
+            .spacing(8)
+            .align_y(Alignment::Center)
+        )
+        .style(button::primary)
+        .padding(Padding::from([10, 16]));
+
+        let pick_btn = if is_processing {
+            pick_btn
+        } else {
+            pick_btn.on_press(Message::PickImageFiles)
+        };
+
+        let clear_btn = button(
+            row![
+                text("🗑️"),
+                text("Kosongkan Daftar").size(14)
+            ]
+            .spacing(8)
+            .align_y(Alignment::Center)
+        )
+        .style(button::danger)
+        .padding(Padding::from([10, 16]));
+
+        let clear_btn = if !self.image_files.is_empty() && !is_processing {
+            clear_btn.on_press(Message::ClearImageFiles)
+        } else {
+            clear_btn
+        };
+
+        let convert_action_btn = button(
+            row![
+                text("⚡"),
+                text(format!(
+                    "Buat PDF ({} gambar)",
+                    self.image_files.len()
+                ))
+                .size(15)
+                .font(BOLD)
+            ]
+            .spacing(10)
+            .align_y(Alignment::Center)
+        )
+        .style(button::success)
+        .padding(Padding::from([12, 24]));
+
+        let convert_action_btn = if !self.image_files.is_empty() && !is_processing {
+            convert_action_btn.on_press(Message::RunImagesToPdf)
+        } else {
+            convert_action_btn
+        };
+
+        let top_toolbar = row![
+            pick_btn,
+            clear_btn,
+            Space::new().width(Length::Fill),
+            convert_action_btn
+        ]
+        .spacing(12)
+        .align_y(Alignment::Center);
+
+        let images_list: Element<'_, Message> = if self.image_files.is_empty() {
+            container(
+                column![
+                    text("🖼️").size(48),
+                    text("Belum ada file gambar yang dipilih").size(16).font(BOLD),
+                    text("Klik tombol 'Tambah Gambar' di atas untuk memilih file PNG, JPG, JPEG, WEBP, atau BMP.")
+                        .size(13)
+                        .style(text::secondary),
+                    text("Setiap gambar akan dikonversi menjadi halaman PDF dengan resolusi dan kualitas asli.")
+                        .size(12)
+                        .style(text::secondary)
+                ]
+                .spacing(10)
+                .align_x(Alignment::Center)
+            )
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .center_x(Length::Fill)
+            .center_y(Length::Fill)
+            .style(container::rounded_box)
+            .into()
+        } else {
+            let mut list_col = column![].spacing(8);
+
+            for (idx, path) in self.image_files.iter().enumerate() {
+                let file_name = path
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_else(|| "Image".to_string());
+
+                let file_size_text = std::fs::metadata(path)
+                    .map(|m| format_file_size(m.len()))
+                    .unwrap_or_else(|_| "-".to_string());
+
+                let up_btn = button(text("▲").size(12))
+                    .style(button::secondary)
+                    .padding(Padding::from([4, 8]));
+                let up_btn = if idx > 0 && !is_processing {
+                    up_btn.on_press(Message::MoveImageFileUp(idx))
+                } else {
+                    up_btn
+                };
+
+                let down_btn = button(text("▼").size(12))
+                    .style(button::secondary)
+                    .padding(Padding::from([4, 8]));
+                let down_btn = if idx + 1 < self.image_files.len() && !is_processing {
+                    down_btn.on_press(Message::MoveImageFileDown(idx))
+                } else {
+                    down_btn
+                };
+
+                let remove_btn = button(text("✕").size(12))
+                    .style(button::danger)
+                    .padding(Padding::from([4, 8]));
+                let remove_btn = if !is_processing {
+                    remove_btn.on_press(Message::RemoveImageFile(idx))
+                } else {
+                    remove_btn
+                };
+
+                let row_item = container(
+                    row![
+                        container(text(format!("#{}", idx + 1)).size(13).font(BOLD))
+                            .padding(Padding::from([3, 8]))
+                            .style(container::rounded_box),
+                        column![
+                            text(file_name).size(14).font(BOLD),
+                            text(file_size_text).size(11).style(text::secondary)
+                        ]
+                        .spacing(2),
+                        Space::new().width(Length::Fill),
+                        up_btn,
+                        down_btn,
+                        remove_btn
+                    ]
+                    .spacing(10)
+                    .align_y(Alignment::Center)
+                )
+                .width(Length::Fill)
+                .padding(Padding::from([10, 16]))
+                .style(container::rounded_box);
+
+                list_col = list_col.push(row_item);
+            }
+
+            scrollable(list_col)
+                .height(Length::Fill)
+                .into()
+        };
+
+        column![
+            top_toolbar,
+            rule::horizontal(1),
+            images_list
         ]
         .spacing(12)
         .into()
