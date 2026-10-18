@@ -108,15 +108,136 @@ else
     fi
 fi
 
-# Check PATH
+# 2. Add to User PATH automatically
 echo ""
 echo -e "${GREEN}[✓] Berhasil menginstal PD di: ${INSTALL_DIR}/pd${NC}"
 
-if [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
-    echo -e "${YELLOW}[!] Catatan: Direktori ${INSTALL_DIR} belum ada di PATH Anda.${NC}"
-    echo "Silakan tambahkan perintah berikut ke file konfigurasi shell Anda (~/.bashrc atau ~/.zshrc):"
-    echo -e "${BOLD}export PATH=\"\$HOME/.local/bin:\$PATH\"${NC}"
+PATH_ADDED=false
+for RC_FILE in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.profile"; do
+    if [ -f "$RC_FILE" ]; then
+        if ! grep -q "$INSTALL_DIR" "$RC_FILE"; then
+            echo -e "\n# PD Desktop PDF Utility" >> "$RC_FILE"
+            echo "export PATH=\"\$HOME/.local/bin:\$PATH\"" >> "$RC_FILE"
+            PATH_ADDED=true
+            echo -e "${GREEN}[✓] Menambahkan ${INSTALL_DIR} ke ${RC_FILE}${NC}"
+        fi
+    fi
+done
+
+if [ "$PATH_ADDED" = false ] && [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
+    echo -e "${YELLOW}[!] Catatan: Direktori ${INSTALL_DIR} belum ada di PATH Anda saat ini.${NC}"
+    echo "Silakan tambahkan perintah berikut ke shell config Anda: export PATH=\"\$HOME/.local/bin:\$PATH\""
+fi
+
+# 3. Automatic .pdf file association
+echo -e "${CYAN}[PD] Mengonfigurasi asosiasi file .pdf untuk dibuka otomatis dengan PD...${NC}"
+
+if [ "$OS" = "Linux" ]; then
+    APP_DIR="$HOME/.local/share/applications"
+    mkdir -p "$APP_DIR"
+    
+    cat <<EOF > "$APP_DIR/pd.desktop"
+[Desktop Entry]
+Name=PD - Desktop PDF Utility
+Comment=Ultra-lightweight Pure-Rust PDF Reader & Desktop Utility
+Exec=${INSTALL_DIR}/pd %U
+Terminal=false
+Type=Application
+Icon=application-pdf
+MimeType=application/pdf;
+Categories=Office;Viewer;Graphics;
+StartupNotify=true
+EOF
+    chmod +x "$APP_DIR/pd.desktop"
+
+    if command -v update-desktop-database >/dev/null 2>&1; then
+        update-desktop-database "$APP_DIR" >/dev/null 2>&1 || true
+    fi
+
+    # Set as default for application/pdf using xdg-mime
+    if command -v xdg-mime >/dev/null 2>&1; then
+        xdg-mime default pd.desktop application/pdf 2>/dev/null || true
+    fi
+
+    # Also register in mimeapps.list
+    MIME_LIST="$HOME/.config/mimeapps.list"
+    if [ -f "$MIME_LIST" ]; then
+        if grep -q "\[Default Applications\]" "$MIME_LIST"; then
+            sed -i '/^application\/pdf=/d' "$MIME_LIST" 2>/dev/null || true
+            sed -i '/\[Default Applications\]/a application/pdf=pd.desktop;' "$MIME_LIST" 2>/dev/null || true
+        else
+            echo -e "\n[Default Applications]\napplication/pdf=pd.desktop;" >> "$MIME_LIST"
+        fi
+    else
+        mkdir -p "$HOME/.config"
+        cat <<EOF > "$MIME_LIST"
+[Default Applications]
+application/pdf=pd.desktop;
+
+[Added Associations]
+application/pdf=pd.desktop;
+EOF
+    fi
+    echo -e "${GREEN}[✓] File .pdf berhasil diasosiasikan dengan PD di Linux!${NC}"
+
+elif [ "$OS" = "Darwin" ]; then
+    MAC_APP_DIR="$HOME/Applications/PD.app"
+    mkdir -p "$MAC_APP_DIR/Contents/MacOS" "$MAC_APP_DIR/Contents/Resources"
+    cat <<'EOF' > "$MAC_APP_DIR/Contents/MacOS/pd_launcher"
+#!/bin/bash
+exec "$HOME/.local/bin/pd" "$@"
+EOF
+    chmod +x "$MAC_APP_DIR/Contents/MacOS/pd_launcher"
+
+    cat <<EOF > "$MAC_APP_DIR/Contents/Info.plist"
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key>
+    <string>PD</string>
+    <key>CFBundleDisplayName</key>
+    <string>PD - Desktop PDF Utility</string>
+    <key>CFBundleIdentifier</key>
+    <string>id.co.if.pd</string>
+    <key>CFBundleVersion</key>
+    <string>0.1.2</string>
+    <key>CFBundleExecutable</key>
+    <string>pd_launcher</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleDocumentTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleTypeName</key>
+            <string>PDF Document</string>
+            <key>CFBundleTypeRole</key>
+            <string>Viewer</string>
+            <key>LSHandlerRank</key>
+            <string>Owner</string>
+            <key>CFBundleTypeExtensions</key>
+            <array>
+                <string>pdf</string>
+            </array>
+            <key>CFBundleTypeMIMETypes</key>
+            <array>
+                <string>application/pdf</string>
+            </array>
+        </dict>
+    </array>
+</dict>
+</plist>
+EOF
+    if [ -x "/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/LaunchServices.framework/Versions/A/Support/lsregister" ]; then
+        /System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/LaunchServices.framework/Versions/A/Support/lsregister -f "$MAC_APP_DIR" >/dev/null 2>&1 || true
+    fi
+    if command -v duti >/dev/null 2>&1; then
+        duti -s id.co.if.pd pdf all >/dev/null 2>&1 || true
+    fi
+    echo -e "${GREEN}[✓] File .pdf berhasil diasosiasikan dengan PD di macOS (~/Applications/PD.app)!${NC}"
 fi
 
 echo ""
-echo -e "${GREEN}${BOLD}Instalasi selesai! Jalankan aplikasi dengan mengetik:${NC} pd"
+echo -e "${GREEN}${BOLD}Instalasi selesai! PD - Desktop PDF Utility siap digunakan.${NC}"
+echo "Jalankan 'pd' di terminal atau langsung double-click file PDF apapun untuk membukanya!"
+

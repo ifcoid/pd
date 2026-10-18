@@ -120,6 +120,30 @@ impl App {
         }
     }
 
+    pub fn boot() -> (Self, Task<Message>) {
+        let mut app = Self::new();
+        if let Some(arg) = std::env::args().nth(1) {
+            let path = PathBuf::from(arg);
+            if path.exists() && path.is_file() {
+                if let Ok(total) = get_pdf_page_count(&path) {
+                    app.viewer_file = Some(path.clone());
+                    app.viewer_total_pages = total;
+                    app.viewer_current_page = 1;
+                    let scale = app.viewer_scale;
+                    app.status = OperationStatus::Processing("Membuka dokumen PDF...".to_string());
+                    let task = Task::future(async move {
+                        match render_page_to_rgba(&path, 1, scale) {
+                            Ok(data) => Message::ViewerPageRendered(Ok(data)),
+                            Err(e) => Message::ViewerPageRendered(Err(e.to_string())),
+                        }
+                    });
+                    return (app, task);
+                }
+            }
+        }
+        (app, Task::none())
+    }
+
     pub fn theme(&self) -> Theme {
         Theme::TokyoNight
     }

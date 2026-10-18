@@ -78,6 +78,13 @@ pdf-desktop-app/
 ## 6. Instalasi & Cara Menjalankan
 
 ### Cara Cepat (One-Line Installer)
+Skrip instalasi otomatis:
+1. Mengunduh rilis binary terbaru sesuai sistem operasi dan arsitektur CPU Anda.
+2. Memasang binary ke folder pengguna (`$env:LOCALAPPDATA\Programs\pd` di Windows, `~/.local/bin` di Linux/macOS).
+3. **Mendaftarkan direktori instalasi ke User `PATH`** sehingga perintah `pd` dapat langsung dipanggil di terminal manapun.
+4. Membuat pintasan aplikasi di Start Menu (Windows) / Desktop Entry (Linux) / App Bundle (macOS).
+5. **Mengasosiasikan ekstensi `.pdf` secara otomatis**, sehingga Anda cukup melakukan *double-click* pada file PDF manapun untuk membukanya langsung dengan PD.
+
 * **Windows (PowerShell):**
   ```powershell
   irm https://raw.githubusercontent.com/ifcoid/pd/main/install.ps1 | iex

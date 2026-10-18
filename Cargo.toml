@@ -1,6 +1,6 @@
 [package]
 name = "pd"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2024"
 description = "Ultra-lightweight pure-Rust offline PDF reader & desktop utility (View, Merge, Split, Compress)"
 homepage = "https://if.co.id/pd/"

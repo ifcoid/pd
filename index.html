@@ -577,7 +577,7 @@
             <polyline points="7 10 12 15 17 10"></polyline>
             <line x1="12" y1="15" x2="12" y2="3"></line>
           </svg>
-          Download Sekarang (v0.1.1)
+          Download Sekarang (v0.1.2)
         </a>
         <a href="https://github.com/ifcoid/pd" target="_blank" rel="noopener noreferrer" class="btn-secondary">
           Lihat Source Code
@@ -591,11 +591,14 @@
             <button class="term-tab active" id="tab-ps" onclick="switchInstaller('ps')">Windows (PowerShell)</button>
             <button class="term-tab" id="tab-sh" onclick="switchInstaller('sh')">Linux / macOS (Shell)</button>
           </div>
-          <span style="font-size: 11px; color: var(--text-muted);">One-line Quick Install</span>
+          <span style="font-size: 11px; color: #73daca;">Auto PATH & File Association</span>
         </div>
         <div class="terminal-content">
           <code class="terminal-code" id="install-cmd">irm https://raw.githubusercontent.com/ifcoid/pd/main/install.ps1 | iex</code>
           <button class="copy-btn" id="copy-btn" onclick="copyCommand()">Salin</button>
+        </div>
+        <div style="padding: 6px 16px; font-size: 12px; color: var(--text-muted); background: rgba(0,0,0,0.2); border-top: 1px solid var(--border-color); text-align: center;">
+          ⚡ Otomatis ditambahkan ke User PATH &amp; mengasosiasikan file <code>.pdf</code> untuk langsung dibuka dengan PD
         </div>
       </div>
 
@@ -699,7 +702,7 @@
     <section class="downloads-section container" id="downloads">
       <div class="section-title">
         <h2>Download Rilis Resmi</h2>
-        <p>Unduh binary siap pakai untuk sistem operasi Anda (Versi v0.1.1):</p>
+        <p>Unduh binary siap pakai untuk sistem operasi Anda (Versi v0.1.2):</p>
       </div>
 
       <div class="download-grid">
@@ -707,7 +710,7 @@
           <div class="os-icon">🪟</div>
           <h4>Windows</h4>
           <div class="os-arch">x86_64 (.zip)</div>
-          <a href="https://github.com/ifcoid/pd/releases/download/v0.1.1/pd-windows-x86_64.zip" class="download-btn-sm">
+          <a href="https://github.com/ifcoid/pd/releases/download/v0.1.2/pd-windows-x86_64.zip" class="download-btn-sm">
             Download ZIP
           </a>
         </div>
@@ -716,7 +719,7 @@
           <div class="os-icon">🐧</div>
           <h4>Linux</h4>
           <div class="os-arch">x86_64 (.tar.gz)</div>
-          <a href="https://github.com/ifcoid/pd/releases/download/v0.1.1/pd-linux-x86_64.tar.gz" class="download-btn-sm">
+          <a href="https://github.com/ifcoid/pd/releases/download/v0.1.2/pd-linux-x86_64.tar.gz" class="download-btn-sm">
             Download tar.gz
           </a>
         </div>
@@ -725,7 +728,7 @@
           <div class="os-icon">🍎</div>
           <h4>macOS (Apple Silicon)</h4>
           <div class="os-arch">M1 / M2 / M3 (.tar.gz)</div>
-          <a href="https://github.com/ifcoid/pd/releases/download/v0.1.1/pd-macos-aarch64.tar.gz" class="download-btn-sm">
+          <a href="https://github.com/ifcoid/pd/releases/download/v0.1.2/pd-macos-aarch64.tar.gz" class="download-btn-sm">
             Download tar.gz
           </a>
         </div>
@@ -734,7 +737,7 @@
           <div class="os-icon">🍏</div>
           <h4>macOS (Intel)</h4>
           <div class="os-arch">x86_64 (.tar.gz)</div>
-          <a href="https://github.com/ifcoid/pd/releases/download/v0.1.1/pd-macos-x86_64.tar.gz" class="download-btn-sm">
+          <a href="https://github.com/ifcoid/pd/releases/download/v0.1.2/pd-macos-x86_64.tar.gz" class="download-btn-sm">
             Download tar.gz
           </a>
         </div>

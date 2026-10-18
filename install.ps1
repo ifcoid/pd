@@ -139,7 +139,61 @@ try {
     Write-WarningMsg "Tidak dapat membuat pintasan Start Menu: $($_.Exception.Message)"
 }
 
+# 7. Asosiasikan ekstensi .pdf dengan PD secara otomatis (User Level)
+Write-Step "Mengonfigurasi asosiasi file .pdf untuk otomatis dibuka menggunakan PD..."
+try {
+    $ProgId = "pd.pdf"
+    $DocDesc = "PDF Document (PD - Ultra-Lightweight Reader)"
+    $Command = "`"$ExePath`" `"%1`""
+
+    # Daftarkan ProgID di HKCU:\Software\Classes
+    New-Item -Path "HKCU:\Software\Classes\$ProgId" -Value $DocDesc -Force | Out-Null
+    New-Item -Path "HKCU:\Software\Classes\$ProgId\DefaultIcon" -Value "$ExePath,0" -Force | Out-Null
+    New-Item -Path "HKCU:\Software\Classes\$ProgId\shell\open\command" -Value $Command -Force | Out-Null
+
+    # Daftarkan ekstensi .pdf di HKCU:\Software\Classes
+    New-Item -Path "HKCU:\Software\Classes\.pdf" -Value $ProgId -Force | Out-Null
+    New-Item -Path "HKCU:\Software\Classes\.pdf\OpenWithProgids" -Force | Out-Null
+    Set-ItemProperty -Path "HKCU:\Software\Classes\.pdf\OpenWithProgids" -Name $ProgId -Value "" -Force
+
+    # Daftarkan di App Paths (memungkinkan 'pd' dan 'pd.exe' dijalankan dari Run dialog / CLI)
+    New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\App Paths\pd.exe" -Value $ExePath -Force | Out-Null
+    Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\App Paths\pd.exe" -Name "Path" -Value $InstallDir -Force
+
+    # Daftarkan di Applications
+    New-Item -Path "HKCU:\Software\Classes\Applications\pd.exe\shell\open\command" -Value $Command -Force | Out-Null
+    New-Item -Path "HKCU:\Software\Classes\Applications\pd.exe\SupportedTypes" -Force | Out-Null
+    Set-ItemProperty -Path "HKCU:\Software\Classes\Applications\pd.exe\SupportedTypes" -Name ".pdf" -Value "" -Force
+
+    # Daftarkan preferensi di Explorer FileExts
+    $FileExtsPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.pdf"
+    if (Test-Path $FileExtsPath) {
+        New-Item -Path "$FileExtsPath\OpenWithList" -Force | Out-Null
+        Set-ItemProperty -Path "$FileExtsPath\OpenWithList" -Name "a" -Value "pd.exe" -Force
+        Set-ItemProperty -Path "$FileExtsPath\OpenWithList" -Name "MRUList" -Value "a" -Force
+
+        New-Item -Path "$FileExtsPath\OpenWithProgids" -Force | Out-Null
+        Set-ItemProperty -Path "$FileExtsPath\OpenWithProgids" -Name $ProgId -Value "" -Force
+    }
+
+    # Beritahu Windows Shell bahwa asosiasi file telah diperbarui
+    $code = @'
+    [System.Runtime.InteropServices.DllImport("shell32.dll")]
+    public static extern void SHChangeNotify(int wEventId, int uFlags, int dwItem1, int dwItem2);
+'@
+    try {
+        $type = Add-Type -MemberDefinition $code -Name "ShellNotification" -Namespace "PD" -PassThru -ErrorAction SilentlyContinue
+        if ($type) {
+            $type::SHChangeNotify(0x08000000, 0, 0, 0) # SHCNE_ASSOCCHANGED
+        }
+    } catch {}
+
+    Write-SuccessMsg "Ekstensi file .pdf berhasil diasosiasikan untuk dibuka otomatis dengan PD!"
+} catch {
+    Write-WarningMsg "Tidak dapat mengatur asosiasi otomatis file .pdf: $($_.Exception.Message)"
+}
+
 Write-Host ""
 Write-SuccessMsg "Instalasi selesai! PD - Desktop PDF Utility siap digunakan."
-Write-Host "Anda dapat menjalankan aplikasi dengan mengetik 'pd' di terminal atau melalui Start Menu." -ForegroundColor Gray
+Write-Host "Anda dapat menjalankan aplikasi dengan mengetik 'pd' di terminal, melalui Start Menu, atau langsung double-click file PDF apapun!" -ForegroundColor Gray
 Write-Host ""
