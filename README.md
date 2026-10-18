@@ -1,4 +1,14 @@
-# Project Brief: Desktop PDF Utility Application (Rust + Iced)
+# PD - Desktop PDF Utility Application (Rust + Iced)
+
+[![Build & Release](https://github.com/ifcoid/pd/actions/workflows/release.yml/badge.svg)](https://github.com/ifcoid/pd/actions/workflows/release.yml)
+[![Latest Release](https://img.shields.io/github/v/release/ifcoid/pd?color=blue&label=Release)](https://github.com/ifcoid/pd/releases/latest)
+[![Website](https://img.shields.io/badge/Website-if.co.id%2Fpd-10b981)](https://if.co.id/pd/)
+[![License](https://img.shields.io/badge/License-MIT-purple)](https://github.com/ifcoid/pd/blob/main/LICENSE)
+
+🌐 **Official Website:** [https://if.co.id/pd/](https://if.co.id/pd/)  
+🐙 **GitHub Repository:** [https://github.com/ifcoid/pd](https://github.com/ifcoid/pd)
+
+---
 
 ## 1. Project Overview
 Membangun aplikasi desktop *cross-platform* berperforma tinggi menggunakan **Rust** dan pustaka GUI **Iced**. Aplikasi ini dirancang untuk bekerja secara lokal (offline-first) guna memproses dokumen PDF, terinspirasi dari fungsionalitas inti [iLovePDF](https://www.ilovepdf.com/).

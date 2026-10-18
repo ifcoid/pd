@@ -2,6 +2,12 @@
 name = "pd"
 version = "0.1.0"
 edition = "2024"
+description = "High-performance offline desktop PDF utility application (Merge, Split, Compress)"
+homepage = "https://if.co.id/pd/"
+repository = "https://github.com/ifcoid/pd"
+license = "MIT"
+keywords = ["pdf", "utility", "gui", "iced", "offline"]
+categories = ["command-line-utilities", "gui"]
 
 [dependencies]
 anyhow = "1.0.104"
