@@ -68,3 +68,13 @@ pub fn render_page_to_rgba(
         rgba_bytes,
     })
 }
+
+/// Extracts text from a specific PDF page using lopdf parser.
+pub fn extract_page_text(pdf_path: &Path, page_number: usize) -> Result<String> {
+    let doc = lopdf::Document::load(pdf_path)
+        .with_context(|| format!("Gagal memuat dokumen PDF {:?}", pdf_path))?;
+    let text = doc.extract_text(&[page_number as u32])
+        .unwrap_or_default();
+    Ok(text)
+}
+

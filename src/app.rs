@@ -2,7 +2,8 @@ use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use iced::event::{self, Event};
 use iced::widget::{
-    button, column, container, image, mouse_area, progress_bar, row, rule, scrollable, text, text_input, Space,
+    button, column, container, image, mouse_area, progress_bar, row, rule, scrollable, text,
+    text_editor, text_input, Space,
 };
 use iced::{
     border::Border, keyboard, mouse, Alignment, Background, Color, Element, Font, Length, Padding,
@@ -11,7 +12,7 @@ use iced::{
 
 use crate::pdf_ops::{
     compress_pdf, export_all_pdf_pages_to_images, export_pdf_page_to_image,
-    export_pdf_pages_to_dir, extract_pages_to_file, get_pdf_page_count,
+    export_pdf_pages_to_dir, extract_page_text, extract_pages_to_file, get_pdf_page_count,
     images_to_pdf, merge_pdfs, parse_page_ranges, render_page_to_rgba,
     CompressionReport, ExportImageFormat, PageViewData,
 };
@@ -60,6 +61,18 @@ pub struct App {
     pub viewer_content_taller: bool,
     pub sidebar_open: bool,
     pub context_menu_open: bool,
+
+    // Text Drawer (Option 1: Blok & Salin Teks)
+    pub text_drawer_open: bool,
+    pub text_drawer_content: text_editor::Content,
+    pub text_drawer_page: usize,
+
+    // Snip Tool (Option 2: Cuplik Area Gambar/Teks)
+    pub snip_mode: bool,
+    pub snip_start: Option<(f32, f32)>,
+    pub snip_current: Option<(f32, f32)>,
+    pub snip_rect: Option<(f32, f32, f32, f32)>,
+    pub cursor_pos: (f32, f32),
 
     // PDF to Images Tab State
     pub pdf_to_img_file: Option<PathBuf>,
@@ -124,6 +137,23 @@ pub enum Message {
     },
     CloseContextMenu,
     EventOccurred(Event),
+
+    // Text Drawer (Opsi 1: Blok & Salin Teks)
+    ToggleTextDrawer,
+    CloseTextDrawer,
+    PageTextEditorAction(text_editor::Action),
+    CopyPageText,
+
+    // Snip Tool (Opsi 2: Cuplik Area)
+    ToggleSnipMode,
+    CancelSnip,
+    SnipPresetFull,
+    SnipPresetTop,
+    SnipPresetBottom,
+    SnipPresetCenter,
+    CopySnipArea,
+    SaveSnipArea,
+    SnipAreaSaved(Result<PathBuf, String>),
 
     // PDF to Images Actions
     PickPdfToImgFile,
@@ -212,6 +242,14 @@ impl App {
             sidebar_open: false,
             viewer_current_data: None,
             context_menu_open: false,
+            text_drawer_open: false,
+            text_drawer_content: text_editor::Content::new(),
+            text_drawer_page: 1,
+            snip_mode: false,
+            snip_start: None,
+            snip_current: None,
+            snip_rect: None,
+            cursor_pos: (0.0, 0.0),
         }
     }
 
@@ -383,6 +421,42 @@ impl App {
         }
     }
 
+    fn reload_text_drawer(&mut self) {
+        if let Some(ref path) = self.viewer_file {
+            let p = self.viewer_current_page;
+            self.text_drawer_page = p;
+            match extract_page_text(path, p) {
+                Ok(txt) => {
+                    let trimmed = txt.trim();
+                    if trimmed.is_empty() {
+                        self.text_drawer_content = text_editor::Content::with_text(
+                            "(Halaman ini tidak mengandung teks digital, kemungkinan berupa gambar pindaian/scan)"
+                        );
+                    } else {
+                        self.text_drawer_content = text_editor::Content::with_text(&txt);
+                    }
+                }
+                Err(e) => {
+                    self.text_drawer_content = text_editor::Content::with_text(
+                        &format!("Gagal mengekstrak teks halaman: {}", e)
+                    );
+                }
+            }
+        }
+    }
+
+    fn get_snip_crop_coords(&self, page_w: u32, page_h: u32) -> (u32, u32, u32, u32) {
+        if let Some((rx, ry, rw, rh)) = self.snip_rect {
+            let x = (rx.max(0.0) as u32).min(page_w.saturating_sub(1));
+            let y = (ry.max(0.0) as u32).min(page_h.saturating_sub(1));
+            let w = (rw.max(10.0) as u32).min(page_w - x);
+            let h = (rh.max(10.0) as u32).min(page_h - y);
+            (x, y, w.max(1), h.max(1))
+        } else {
+            (0, 0, page_w, page_h)
+        }
+    }
+
     pub fn update(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::ViewerScrolled { relative_y, content_taller } => {
@@ -394,6 +468,9 @@ impl App {
                     if approx_page != self.viewer_current_page {
                         self.viewer_current_page = approx_page;
                         self.viewer_page_input = approx_page.to_string();
+                        if self.text_drawer_open {
+                            self.reload_text_drawer();
+                        }
                         if let Some((handle, data)) = self.viewer_pages.get(&approx_page) {
                             self.viewer_image_handle = Some(handle.clone());
                             self.viewer_current_data = Some(data.clone());
@@ -409,8 +486,72 @@ impl App {
                 }
 
                 match event {
+                    Event::Mouse(mouse::Event::CursorMoved { position }) => {
+                        self.cursor_pos = (position.x, position.y);
+                        if self.snip_mode {
+                            if let Some(start) = self.snip_start {
+                                self.snip_current = Some((position.x, position.y));
+                                let pw = self.viewer_page_dims.0 as f32;
+                                let ph = self.viewer_page_dims.1 as f32;
+                                if pw > 0.0 && ph > 0.0 {
+                                    let sidebar_w = if self.sidebar_open { 220.0 } else { 0.0 };
+                                    let page_x = sidebar_w + 30.0;
+                                    let page_y = 100.0;
+                                    let rel_sx = (start.0 - page_x).clamp(0.0, pw);
+                                    let rel_sy = (start.1 - page_y).clamp(0.0, ph);
+                                    let rel_cx = (position.x - page_x).clamp(0.0, pw);
+                                    let rel_cy = (position.y - page_y).clamp(0.0, ph);
+                                    let x = rel_sx.min(rel_cx);
+                                    let y = rel_sy.min(rel_cy);
+                                    let w = (rel_cx - rel_sx).abs();
+                                    let h = (rel_cy - rel_sy).abs();
+                                    if w > 5.0 && h > 5.0 {
+                                        self.snip_rect = Some((x, y, w, h));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)) => {
+                        if self.snip_mode {
+                            self.snip_start = Some(self.cursor_pos);
+                            self.snip_current = Some(self.cursor_pos);
+                        }
+                    }
+                    Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)) => {
+                        if self.snip_mode {
+                            if let (Some(start), Some(curr)) = (self.snip_start, self.snip_current) {
+                                let pw = self.viewer_page_dims.0 as f32;
+                                let ph = self.viewer_page_dims.1 as f32;
+                                if pw > 0.0 && ph > 0.0 {
+                                    let sidebar_w = if self.sidebar_open { 220.0 } else { 0.0 };
+                                    let page_x = sidebar_w + 30.0;
+                                    let page_y = 100.0;
+                                    let rel_sx = (start.0 - page_x).clamp(0.0, pw);
+                                    let rel_sy = (start.1 - page_y).clamp(0.0, ph);
+                                    let rel_cx = (curr.0 - page_x).clamp(0.0, pw);
+                                    let rel_cy = (curr.1 - page_y).clamp(0.0, ph);
+                                    let x = rel_sx.min(rel_cx);
+                                    let y = rel_sy.min(rel_cy);
+                                    let w = (rel_cx - rel_sx).abs();
+                                    let h = (rel_cy - rel_sy).abs();
+                                    if w > 10.0 && h > 10.0 {
+                                        self.snip_rect = Some((x, y, w, h));
+                                    }
+                                }
+                            }
+                            self.snip_start = None;
+                            self.snip_current = None;
+                        }
+                    }
                     Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Right)) => {
-                        self.context_menu_open = !self.context_menu_open;
+                        if self.snip_mode {
+                            self.snip_mode = false;
+                            self.snip_rect = None;
+                            self.status = OperationStatus::Idle;
+                        } else {
+                            self.context_menu_open = !self.context_menu_open;
+                        }
                     }
                     Event::Keyboard(keyboard::Event::KeyPressed { key, .. }) => {
                         match key {
@@ -437,6 +578,11 @@ impl App {
                             keyboard::Key::Named(keyboard::key::Named::Escape) => {
                                 self.context_menu_open = false;
                                 self.menu_open = false;
+                                if self.snip_mode {
+                                    self.snip_mode = false;
+                                    self.snip_rect = None;
+                                    self.status = OperationStatus::Idle;
+                                }
                             }
                             _ => {}
                         }
@@ -495,6 +641,9 @@ impl App {
                         self.viewer_pages.clear();
                         self.viewer_loading_pages.clear();
                         self.viewer_page_dims = (0, 0);
+                        if self.text_drawer_open {
+                            self.reload_text_drawer();
+                        }
                         return self.ensure_pages_rendered();
                     }
                 }
@@ -504,6 +653,9 @@ impl App {
                 if self.viewer_current_page < self.viewer_total_pages {
                     self.viewer_current_page += 1;
                     self.viewer_page_input = self.viewer_current_page.to_string();
+                    if self.text_drawer_open {
+                        self.reload_text_drawer();
+                    }
                     let target_ratio = (self.viewer_current_page - 1) as f32 / self.viewer_total_pages.max(1) as f32;
                     let snap_task = iced::widget::operation::snap_to(
                         "viewer_scroll",
@@ -518,6 +670,9 @@ impl App {
                 if self.viewer_current_page > 1 {
                     self.viewer_current_page -= 1;
                     self.viewer_page_input = self.viewer_current_page.to_string();
+                    if self.text_drawer_open {
+                        self.reload_text_drawer();
+                    }
                     let target_ratio = (self.viewer_current_page - 1) as f32 / self.viewer_total_pages.max(1) as f32;
                     let snap_task = iced::widget::operation::snap_to(
                         "viewer_scroll",
@@ -535,6 +690,9 @@ impl App {
                 {
                     self.viewer_current_page = page;
                     self.viewer_page_input = page.to_string();
+                    if self.text_drawer_open {
+                        self.reload_text_drawer();
+                    }
                     let target_ratio = (page - 1) as f32 / self.viewer_total_pages.max(1) as f32;
                     let snap_task = iced::widget::operation::snap_to(
                         "viewer_scroll",
@@ -839,6 +997,218 @@ impl App {
                             self.status = OperationStatus::Idle;
                         } else {
                             self.status = OperationStatus::Error(format!("Gagal mengekspor gambar: {}", msg));
+                        }
+                    }
+                }
+                Task::none()
+            }
+
+            // --- TEXT DRAWER ACTIONS (Opsi 1: Blok & Salin Teks) ---
+            Message::ToggleTextDrawer => {
+                self.text_drawer_open = !self.text_drawer_open;
+                if self.text_drawer_open {
+                    self.reload_text_drawer();
+                }
+                Task::none()
+            }
+            Message::CloseTextDrawer => {
+                self.text_drawer_open = false;
+                Task::none()
+            }
+            Message::PageTextEditorAction(action) => {
+                self.text_drawer_content.perform(action);
+                Task::none()
+            }
+            Message::CopyPageText => {
+                let full_text = self.text_drawer_content.text();
+                if full_text.trim().is_empty() {
+                    self.status = OperationStatus::Error("Tidak ada teks untuk disalin.".to_string());
+                } else {
+                    match arboard::Clipboard::new() {
+                        Ok(mut cb) => {
+                            match cb.set_text(full_text.clone()) {
+                                Ok(_) => {
+                                    let preview = if full_text.len() > 50 {
+                                        format!("{}...", &full_text[..47].replace(['\r', '\n'], " "))
+                                    } else {
+                                        full_text.replace(['\r', '\n'], " ")
+                                    };
+                                    self.status = OperationStatus::Success(format!(
+                                        "Teks halaman {} berhasil disalin: \"{}\"",
+                                        self.viewer_current_page, preview
+                                    ));
+                                }
+                                Err(e) => {
+                                    self.status = OperationStatus::Error(format!("Gagal menyalin teks: {}", e));
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            self.status = OperationStatus::Error(format!("Gagal membuka clipboard: {}", e));
+                        }
+                    }
+                }
+                Task::none()
+            }
+
+            // --- SNIP TOOL ACTIONS (Opsi 2: Cuplik Area) ---
+            Message::ToggleSnipMode => {
+                self.snip_mode = !self.snip_mode;
+                self.snip_start = None;
+                self.snip_current = None;
+                self.snip_rect = None;
+                if self.snip_mode {
+                    self.context_menu_open = false;
+                    self.status = OperationStatus::Processing(
+                        "Mode Cuplik Aktif: Seret mouse pada dokumen untuk memilih area, atau pilih preset. Tekan ESC untuk batal.".to_string()
+                    );
+                } else {
+                    self.status = OperationStatus::Idle;
+                }
+                Task::none()
+            }
+            Message::CancelSnip => {
+                self.snip_mode = false;
+                self.snip_start = None;
+                self.snip_current = None;
+                self.snip_rect = None;
+                self.status = OperationStatus::Idle;
+                Task::none()
+            }
+            Message::SnipPresetFull => {
+                self.snip_rect = None;
+                self.status = OperationStatus::Processing("Preset: Seluruh Halaman dipilih.".to_string());
+                Task::none()
+            }
+            Message::SnipPresetTop => {
+                let (pw, ph) = self.viewer_page_dims;
+                let pw = if pw > 0 { pw as f32 } else { 800.0 };
+                let ph = if ph > 0 { ph as f32 } else { 1000.0 };
+                self.snip_rect = Some((0.0, 0.0, pw, ph / 2.0));
+                self.status = OperationStatus::Processing("Preset: 50% Bagian Atas dipilih.".to_string());
+                Task::none()
+            }
+            Message::SnipPresetBottom => {
+                let (pw, ph) = self.viewer_page_dims;
+                let pw = if pw > 0 { pw as f32 } else { 800.0 };
+                let ph = if ph > 0 { ph as f32 } else { 1000.0 };
+                self.snip_rect = Some((0.0, ph / 2.0, pw, ph / 2.0));
+                self.status = OperationStatus::Processing("Preset: 50% Bagian Bawah dipilih.".to_string());
+                Task::none()
+            }
+            Message::SnipPresetCenter => {
+                let (pw, ph) = self.viewer_page_dims;
+                let pw = if pw > 0 { pw as f32 } else { 800.0 };
+                let ph = if ph > 0 { ph as f32 } else { 1000.0 };
+                self.snip_rect = Some((pw * 0.1, ph * 0.2, pw * 0.8, ph * 0.6));
+                self.status = OperationStatus::Processing("Preset: Bagian Tengah dipilih.".to_string());
+                Task::none()
+            }
+            Message::CopySnipArea => {
+                let data_opt = self.viewer_pages.get(&self.viewer_current_page)
+                    .map(|(_, d)| d.clone())
+                    .or_else(|| self.viewer_current_data.clone());
+
+                if let Some(ref data) = data_opt {
+                    let (crop_x, crop_y, crop_w, crop_h) = self.get_snip_crop_coords(data.width, data.height);
+                    match crop_rgba(data.width, data.height, &data.rgba_bytes, crop_x, crop_y, crop_w, crop_h) {
+                        Ok((w, h, cropped_rgba)) => {
+                            match arboard::Clipboard::new() {
+                                Ok(mut cb) => {
+                                    let img = arboard::ImageData {
+                                        width: w as usize,
+                                        height: h as usize,
+                                        bytes: std::borrow::Cow::Borrowed(&cropped_rgba),
+                                    };
+                                    match cb.set_image(img) {
+                                        Ok(_) => {
+                                            self.snip_mode = false;
+                                            self.snip_rect = None;
+                                            self.status = OperationStatus::Success(format!(
+                                                "Cuplikan area ({}x{} px) berhasil disalin ke clipboard! Siap dipaste (Ctrl+V) ke WA/Word.",
+                                                w, h
+                                            ));
+                                        }
+                                        Err(e) => {
+                                            self.status = OperationStatus::Error(format!("Gagal menyalin cuplikan ke clipboard: {}", e));
+                                        }
+                                    }
+                                }
+                                Err(e) => {
+                                    self.status = OperationStatus::Error(format!("Gagal membuka clipboard: {}", e));
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            self.status = OperationStatus::Error(e);
+                        }
+                    }
+                } else {
+                    self.status = OperationStatus::Error("Tidak ada halaman aktif untuk dicuplik.".to_string());
+                }
+                Task::none()
+            }
+            Message::SaveSnipArea => {
+                let data_opt = self.viewer_pages.get(&self.viewer_current_page)
+                    .map(|(_, d)| d.clone())
+                    .or_else(|| self.viewer_current_data.clone());
+
+                if let Some(ref data) = data_opt {
+                    let (crop_x, crop_y, crop_w, crop_h) = self.get_snip_crop_coords(data.width, data.height);
+                    match crop_rgba(data.width, data.height, &data.rgba_bytes, crop_x, crop_y, crop_w, crop_h) {
+                        Ok((w, h, cropped_rgba)) => {
+                            let curr_p = self.viewer_current_page;
+                            let default_name = format!("cuplikan_hal_{}_{}x{}.png", curr_p, w, h);
+                            self.status = OperationStatus::Processing("Menyimpan cuplikan area ke file PNG...".to_string());
+                            Task::future(async move {
+                                let dest = rfd::AsyncFileDialog::new()
+                                    .add_filter("PNG Image (*.png)", &["png"])
+                                    .set_file_name(&default_name)
+                                    .set_title("Simpan Cuplikan Area Sebagai PNG")
+                                    .save_file()
+                                    .await;
+
+                                if let Some(handle) = dest {
+                                    let path = handle.path().to_path_buf();
+                                    match ::image::save_buffer_with_format(
+                                        &path,
+                                        &cropped_rgba,
+                                        w,
+                                        h,
+                                        ::image::ExtendedColorType::Rgba8,
+                                        ::image::ImageFormat::Png,
+                                    ) {
+                                        Ok(_) => Message::SnipAreaSaved(Ok(path)),
+                                        Err(e) => Message::SnipAreaSaved(Err(e.to_string())),
+                                    }
+                                } else {
+                                    Message::SnipAreaSaved(Err("Penyimpanan cuplikan dibatalkan.".to_string()))
+                                }
+                            })
+                        }
+                        Err(e) => {
+                            self.status = OperationStatus::Error(e);
+                            Task::none()
+                        }
+                    }
+                } else {
+                    self.status = OperationStatus::Error("Tidak ada halaman aktif untuk dicuplik.".to_string());
+                    Task::none()
+                }
+            }
+            Message::SnipAreaSaved(res) => {
+                match res {
+                    Ok(path) => {
+                        self.snip_mode = false;
+                        self.snip_rect = None;
+                        let name = path.file_name().and_then(|s| s.to_str()).unwrap_or("cuplikan.png");
+                        self.status = OperationStatus::Success(format!("Cuplikan area berhasil disimpan: {}", name));
+                    }
+                    Err(msg) => {
+                        if msg.contains("dibatalkan") {
+                            self.status = OperationStatus::Idle;
+                        } else {
+                            self.status = OperationStatus::Error(format!("Gagal menyimpan cuplikan: {}", msg));
                         }
                     }
                 }
@@ -1381,6 +1751,11 @@ impl App {
                 .padding(if self.active_tab == ActiveTab::View { 0 } else { 16 })
         );
 
+        // Right Text Drawer (Option 1: Blok & Salin Teks)
+        if self.active_tab == ActiveTab::View && self.text_drawer_open && self.viewer_file.is_some() {
+            body_row = body_row.push(self.view_text_drawer());
+        }
+
         // Right tools drawer
         if self.menu_open {
             body_row = body_row.push(
@@ -1570,6 +1945,64 @@ impl App {
             .into()
     }
 
+    fn view_text_drawer(&self) -> Element<'_, Message> {
+        let header = row![
+            text(format!("📝 Teks Halaman {}", self.viewer_current_page))
+                .size(12)
+                .font(BOLD)
+                .style(text::primary),
+            Space::new().width(Length::Fill),
+            button(
+                row![text("📋"), text("Salin Semua").size(10)]
+                    .spacing(3)
+                    .align_y(Alignment::Center)
+            )
+            .style(edge_btn)
+            .padding(Padding::from([3, 7]))
+            .on_press(Message::CopyPageText),
+            button(text("✕").size(11))
+                .style(edge_btn)
+                .padding(Padding::from([3, 6]))
+                .on_press(Message::CloseTextDrawer)
+        ]
+        .spacing(4)
+        .align_y(Alignment::Center);
+
+        let hint = text("💡 Blok teks dengan mouse lalu tekan Ctrl+C")
+            .size(10)
+            .style(text::secondary);
+
+        let editor = text_editor(&self.text_drawer_content)
+            .on_action(Message::PageTextEditorAction)
+            .height(Length::Fill)
+            .padding(Padding::from([8, 10]));
+
+        let card = column![
+            header,
+            hint,
+            rule::horizontal(1),
+            editor
+        ]
+        .spacing(6)
+        .width(Length::Fill)
+        .height(Length::Fill);
+
+        container(card)
+            .width(360)
+            .height(Length::Fill)
+            .padding(Padding::from([8, 10]))
+            .style(|_t: &Theme| container::Style {
+                background: Some(Background::Color(Color::from_rgb8(0x1e, 0x1e, 0x22))),
+                border: Border {
+                    color: Color::from_rgb8(0x33, 0x33, 0x3a),
+                    width: 1.0,
+                    radius: 0.0.into(),
+                },
+                ..Default::default()
+            })
+            .into()
+    }
+
     fn view_top_bar(&self) -> Element<'_, Message> {
         let is_processing = matches!(self.status, OperationStatus::Processing(_));
 
@@ -1644,6 +2077,32 @@ impl App {
                 save_btn.on_press(Message::ViewerExportPagePng)
             } else {
                 save_btn
+            };
+
+            let text_drawer_btn = button(
+                row![text("📝").size(12), text("Teks").size(11)]
+                    .spacing(4)
+                    .align_y(Alignment::Center)
+            )
+            .style(if self.text_drawer_open { edge_btn_active } else { edge_btn })
+            .padding(Padding::from([4, 8]));
+            let text_drawer_btn = if self.viewer_file.is_some() && !is_processing {
+                text_drawer_btn.on_press(Message::ToggleTextDrawer)
+            } else {
+                text_drawer_btn
+            };
+
+            let snip_btn = button(
+                row![text("✂️").size(12), text("Cuplik").size(11)]
+                    .spacing(4)
+                    .align_y(Alignment::Center)
+            )
+            .style(if self.snip_mode { edge_btn_active } else { edge_btn })
+            .padding(Padding::from([4, 8]));
+            let snip_btn = if self.viewer_file.is_some() && !is_processing {
+                snip_btn.on_press(Message::ToggleSnipMode)
+            } else {
+                snip_btn
             };
 
             let export_all_btn = button(
@@ -1805,6 +2264,8 @@ impl App {
                 sep(),
                 copy_btn,
                 save_btn,
+                text_drawer_btn,
+                snip_btn,
                 export_all_btn,
                 sep(),
                 title_with_status,
@@ -2088,13 +2549,85 @@ impl App {
                     content_taller: true,
                 });
 
-            let canvas = container(main_scroll)
+            let canvas: Element<'_, Message> = if self.snip_mode {
+                let rect_info = if let Some((_, _, rw, rh)) = self.snip_rect {
+                    format!("📐 Area: {:.0} × {:.0} px", rw, rh)
+                } else {
+                    "📐 Seluruh Halaman".to_string()
+                };
+
+                let snip_bar = container(
+                    row![
+                        text(format!("✂️ Cuplik Halaman {}", self.viewer_current_page))
+                            .size(12)
+                            .font(BOLD)
+                            .style(text::primary),
+                        text(rect_info).size(11).style(text::secondary),
+                        rule::vertical(1),
+                        button(text("100% Full").size(10)).style(edge_btn).padding(Padding::from([3, 6])).on_press(Message::SnipPresetFull),
+                        button(text("50% Atas").size(10)).style(edge_btn).padding(Padding::from([3, 6])).on_press(Message::SnipPresetTop),
+                        button(text("50% Bawah").size(10)).style(edge_btn).padding(Padding::from([3, 6])).on_press(Message::SnipPresetBottom),
+                        button(text("Tengah").size(10)).style(edge_btn).padding(Padding::from([3, 6])).on_press(Message::SnipPresetCenter),
+                        Space::new().width(Length::Fill),
+                        button(
+                            row![text("📋"), text("Salin Cuplikan").size(11).font(BOLD)]
+                                .spacing(4)
+                                .align_y(Alignment::Center)
+                        )
+                        .style(edge_btn_primary)
+                        .padding(Padding::from([4, 10]))
+                        .on_press(Message::CopySnipArea),
+                        button(
+                            row![text("💾"), text("Simpan PNG").size(11)]
+                                .spacing(4)
+                                .align_y(Alignment::Center)
+                        )
+                        .style(edge_btn)
+                        .padding(Padding::from([4, 8]))
+                        .on_press(Message::SaveSnipArea),
+                        button(text("✕ Selesai (ESC)").size(11))
+                            .style(edge_btn)
+                            .padding(Padding::from([4, 8]))
+                            .on_press(Message::CancelSnip)
+                    ]
+                    .spacing(8)
+                    .align_y(Alignment::Center)
+                )
                 .width(Length::Fill)
-                .height(Length::Fill)
+                .padding(Padding::from([6, 12]))
                 .style(|_t: &Theme| container::Style {
-                    background: Some(Background::Color(Color::from_rgb8(0x32, 0x34, 0x38))),
+                    background: Some(Background::Color(Color::from_rgb8(0x18, 0x24, 0x36))),
+                    border: Border {
+                        color: Color::from_rgb8(0x28, 0x44, 0x6e),
+                        width: 1.0,
+                        radius: 0.0.into(),
+                    },
                     ..Default::default()
                 });
+
+                column![
+                    snip_bar,
+                    container(main_scroll)
+                        .width(Length::Fill)
+                        .height(Length::Fill)
+                        .style(|_t: &Theme| container::Style {
+                            background: Some(Background::Color(Color::from_rgb8(0x28, 0x2a, 0x30))),
+                            ..Default::default()
+                        })
+                ]
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .into()
+            } else {
+                container(main_scroll)
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+                    .style(|_t: &Theme| container::Style {
+                        background: Some(Background::Color(Color::from_rgb8(0x32, 0x34, 0x38))),
+                        ..Default::default()
+                    })
+                    .into()
+            };
 
             if self.context_menu_open {
                 let action_btn = |icon: &'static str, title: &'static str, desc: &'static str, msg: Message| {
@@ -2127,6 +2660,8 @@ impl App {
                         ]
                         .align_y(Alignment::Center),
                         rule::horizontal(1),
+                        action_btn("📝", "Blok & Salin Teks...", "Buka panel untuk memilih & blok teks halaman", Message::ToggleTextDrawer),
+                        action_btn("✂️", "Cuplik Area (Snip Tool)...", "Pilih area kotak untuk disalin atau disimpan", Message::ToggleSnipMode),
                         action_btn("📋", "Salin Gambar ke Clipboard", "Paste langsung (Ctrl+V) ke WA/Word", Message::ViewerCopyPageToClipboard),
                         action_btn("🖼️", "Simpan Gambar (PNG)...", "Ekspor gambar beresolusi tinggi", Message::ViewerExportPagePng),
                         action_btn("📷", "Simpan Gambar (JPG)...", "Ekspor file JPG standar", Message::ViewerExportPageJpg),
@@ -2163,7 +2698,7 @@ impl App {
                 .height(Length::Fill)
                 .into()
             } else {
-                canvas.into()
+                canvas
             }
         } else {
             container(
@@ -3154,4 +3689,38 @@ fn rotate_rgba_clockwise(width: u32, height: u32, data: &[u8], degrees: usize) -
         _ => (width, height, data.to_vec()),
     }
 }
+
+fn crop_rgba(
+    src_w: u32,
+    src_h: u32,
+    src_rgba: &[u8],
+    rx: u32,
+    ry: u32,
+    rw: u32,
+    rh: u32,
+) -> Result<(u32, u32, Vec<u8>), String> {
+    if rw == 0 || rh == 0 {
+        return Err("Ukuran area cuplikan tidak boleh kosong".to_string());
+    }
+    let end_x = (rx + rw).min(src_w);
+    let end_y = (ry + rh).min(src_h);
+    let actual_w = end_x.saturating_sub(rx);
+    let actual_h = end_y.saturating_sub(ry);
+    if actual_w == 0 || actual_h == 0 {
+        return Err("Area cuplikan berada di luar batas dokumen".to_string());
+    }
+
+    let mut cropped = Vec::with_capacity((actual_w * actual_h * 4) as usize);
+    for y in ry..end_y {
+        let row_start = ((y * src_w + rx) * 4) as usize;
+        let row_end = row_start + (actual_w * 4) as usize;
+        if row_end <= src_rgba.len() {
+            cropped.extend_from_slice(&src_rgba[row_start..row_end]);
+        } else {
+            return Err("Index piksel di luar jangkauan".to_string());
+        }
+    }
+    Ok((actual_w, actual_h, cropped))
+}
+
 

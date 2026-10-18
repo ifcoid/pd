@@ -13,7 +13,7 @@ pub use image_export::{
 pub use image_to_pdf::images_to_pdf;
 pub use merger::merge_pdfs;
 pub use splitter::{extract_pages_to_file, get_pdf_page_count, parse_page_ranges};
-pub use viewer::{render_page_to_rgba, PageViewData};
+pub use viewer::{extract_page_text, render_page_to_rgba, PageViewData};
 
 #[cfg(test)]
 mod tests {
